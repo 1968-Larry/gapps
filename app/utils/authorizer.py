@@ -575,6 +575,19 @@ class Authorizer:
             return self.return_response(True, AUTHORIZED_MSG, 200, tenant=tenant)
         return self.return_response(False, UNAUTHORIZED_MSG, 403)
 
+    def can_user_read_risk(self, risk):
+        if not (risk := self.id_to_obj("RiskRegister", risk)):
+            return self.return_response(False, "risk not found", 404)
+
+        if risk.project_id:
+            if self._can_user_access_project(risk.project):
+                return self.return_response(True, AUTHORIZED_MSG, 200, risk=risk)
+            return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
+        if self._can_user_access_risk_module(risk.tenant):
+            return self.return_response(True, AUTHORIZED_MSG, 200, risk=risk)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
     def can_user_manage_risk(self, risk):
         if not (risk := self.id_to_obj("RiskRegister", risk)):
             return self.return_response(False, "risk not found", 404)

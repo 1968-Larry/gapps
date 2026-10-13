@@ -97,7 +97,38 @@
               <button @click="showModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
             </form>
             <h3 class="font-bold text-lg px-6" x-text="'Update: '+selectedItem.name"></h3>
-            <div class="card card-body">
+            <div role="tablist" class="tabs px-6 mt-2">
+              <button @click="modalTab='details'" :class="{'border-b font-semibold border-primary': modalTab==='details'}" role="tab" class="tab subtitle text-sm hover:opacity-50">Details</button>
+              <button @click="modalTab='links'" :class="{'border-b font-semibold border-primary': modalTab==='links'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Linked to ('+links.length+')'"></button>
+            </div>
+            <div x-show="modalTab==='links'" class="card card-body">
+              <div x-show="linksLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+              <div x-show="!linksLoading && links.length===0" class="text-center py-10">
+                <h1 class="text-lg font-semibold">Not linked to any control</h1>
+                <p class="text-sm opacity-70 mt-2">Link this evidence from a sub-control (Evidence tab) in a project.</p>
+              </div>
+              <table x-show="!linksLoading && links.length>0" class="table table-sm">
+                <thead>
+                  <tr><th>Project</th><th>Framework</th><th>Control</th></tr>
+                </thead>
+                <tbody>
+                  <template x-for="link in links" :key="link.id">
+                    <tr>
+                      <td x-text="link.project"></td>
+                      <td x-text="link.framework"></td>
+                      <td>
+                        <a :href="link.url" class="underline hover:opacity-75">
+                          <span class="font-semibold" x-text="link.ref_code"></span>
+                          <span x-text="link.name"></span>
+                          <i class="ti ti-external-link text-xs"></i>
+                        </a>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <div x-show="modalTab==='details'" class="card card-body">
                 <div class="grid grid-cols-6 gap-6">
                     <div class="col-span-3">
                         <label class="block text-sm font-medium pb-2">Name</label>
@@ -179,6 +210,9 @@ function table(){
         evidenceInitLoading: false,
         newEvidenceInitLoading: false,
         selectedItem: {},
+        modalTab: 'details',
+        links: [],
+        linksLoading: false,
         formData: {},
         fileUpload: null,
         fileAdd: null,
@@ -190,12 +224,15 @@ function table(){
           {"field": "name", "headerName": "Name", "filter": "agTextColumnFilter"},
           {"field": "description", "headerName": "Description", "filter": "agTextColumnFilter"},
           {"field": "group", "headerName": "Group", "filter": "agTextColumnFilter"},
+          {"field": "control_count", "headerName": "Linked controls", "width": 120, "filter": "agNumberColumnFilter"},
           {"field": "has_file", "headerName": "Has File", "width": 75, "cellRenderer": booleanBadge},
           {"field": "date_added", "headerName": "Created At", "filter": "agTextColumnFilter", "cellRenderer": simpleDate}
         ],
         openModal(item) {
             this.selectedItem = item;
             this.showModal = true;
+            this.modalTab = 'details';
+            this.getLinks(item);
             flatpickr("#datePicker2");
 
             //Pond
@@ -233,6 +270,23 @@ function table(){
             });
 
           this.showCreateModal = true;
+        },
+        getLinks(item) {
+          this.links = [];
+          this.linksLoading = true;
+          request("GET",
+            `/api/v1/evidence/${item.id}/links`,
+            data => {
+              if (this.selectedItem && this.selectedItem.id === item.id) {
+                this.links = data;
+              }
+              this.linksLoading = false;
+            },
+            error => {
+              this.linksLoading = false;
+              toast(error.message, "error");
+            }
+          );
         },
         openDeleteModal(item) {
           this.selectedItem = item;

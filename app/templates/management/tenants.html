@@ -169,6 +169,9 @@
                 <div class="modal-action">
                     <button class="btn" @click="showModal = false">Close</button>
                     <button class="btn btn-error" @click="openDeleteModal(selectedItem)">Delete</button>
+                    <button class="btn btn-outline tooltip" data-tip="Add any new base frameworks to this tenant (existing data is untouched)"
+                            :class='{"btn-disabled": buttonDisabled}'
+                            @click="reloadFrameworks(selectedItem)">Reload frameworks</button>
                     <button class="btn btn-success" :class='{"btn-disabled": buttonDisabled}'
                             @click="updateTenant(selectedItem)">Update
                     </button>
@@ -286,6 +289,24 @@ function table(){
               toast(error.message, "error");
             },
             payload
+          );
+        },
+        reloadFrameworks(item) {
+          this.buttonDisabled = true;
+          request("PUT",
+            "/api/v1/tenants/"+item.id+"/load-frameworks",
+            data => {
+              this.buttonDisabled = false;
+              if (data.added && data.added.length) {
+                toast("Added frameworks: " + data.added.join(", "), "success")
+              } else {
+                toast("Frameworks are already up to date")
+              }
+            },
+            error => {
+              this.buttonDisabled = false;
+              toast(error.message, "error");
+            }
           );
         },
         deleteTenant(item) {

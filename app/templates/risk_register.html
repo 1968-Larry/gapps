@@ -74,6 +74,7 @@
 						<div role="tablist" class="tabs">
 					  <button @click="changeTabInDrawer('overview')" :class="{'border-b font-semibold border-primary': activeSideTab==='overview'}" role="tab" class="tab subtitle text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'border-b font-semibold border-primary': activeSideTab==='comments'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Comments ('+comments.length+')'"></button>
+					  <button @click="changeTabInDrawer('links')" :class="{'border-b font-semibold border-primary': activeSideTab==='links'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Linked to ('+links.length+')'"></button>
 					</div>
 					</div>
 				</div>
@@ -142,6 +143,34 @@
 								</div>
 							</div>
 						</div>
+					</div>
+
+					<div x-show="activeSideTab==='links'" class="card">
+						<div x-show="linksLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+						<div x-show="!linksLoading && links.length===0" class="text-center py-10">
+							<h1 class="text-lg font-semibold">Not linked to any control</h1>
+							<p class="text-sm opacity-70 mt-2">Link this risk from a sub-control (Risks tab) in a project.</p>
+						</div>
+						<table x-show="!linksLoading && links.length>0" class="table table-sm">
+							<thead>
+								<tr><th>Project</th><th>Framework</th><th>Control</th></tr>
+							</thead>
+							<tbody>
+								<template x-for="link in links" :key="link.id">
+									<tr>
+										<td x-text="link.project"></td>
+										<td x-text="link.framework"></td>
+										<td>
+											<a :href="link.url" class="underline hover:opacity-75">
+												<span class="font-semibold" x-text="link.ref_code"></span>
+												<span x-text="link.name"></span>
+												<i class="ti ti-external-link text-xs"></i>
+											</a>
+										</td>
+									</tr>
+								</template>
+							</tbody>
+						</table>
 					</div>
 
 					<div x-show="activeSideTab==='comments'" class="flex-1 overflow-y-auto">
@@ -659,8 +688,13 @@ function risks(){
         rowsSelected: [],
         reports: [],
         tenantUsers: [],
+        riskManagers: [],
+        riskViewers: [],
+        riskVendors: [],
         filteredReports: [],
         comments: [], // comments for the selectedReport
+        links: [], // controls the selectedReport is linked to
+        linksLoading: false,
         selectedReport: {},
         currentPage: 1,
         reportsPerPage: 200,
@@ -701,14 +735,18 @@ function risks(){
             `/api/v1/tenants/${this.$store.currentUser.selectedTenant.id}/users`,
             data => {
               this.tenantUsers = data;
+              this.riskManagers = []
+              this.riskViewers = []
+              this.riskVendors = []
               data.forEach((user) => {
-                if (user.roles.includes("riskmanager")) {
+                const roles = user.roles || []
+                if (roles.includes("riskmanager")) {
                     this.riskManagers.push(user)
                 }
-                if (user.roles.includes("riskviewer")) {
+                if (roles.includes("riskviewer")) {
                     this.riskViewers.push(user)
                 }
-                if (user.roles.includes("vendor")) {
+                if (roles.includes("vendor")) {
                     this.riskVendors.push(user)
                 }
               })
@@ -929,6 +967,7 @@ function risks(){
         		this.selectedReport.risk_level = 10
         	}
         	this.comments = report.comments;
+        	this.getLinks(report)
 			document.getElementById('right-drawer').checked = true;
         },
 		copyRiskLink(riskId) {
@@ -962,6 +1001,23 @@ function risks(){
 			this.selectedReport = {}
 			document.getElementById('right-drawer').checked = false;
 
+        },
+        getLinks: function(report) {
+          this.links = []
+          this.linksLoading = true
+          request("GET",
+            `/api/v1/risks/${report.id}/links`,
+            data => {
+              if (this.selectedReport && this.selectedReport.id === report.id) {
+                this.links = data
+              }
+              this.linksLoading = false
+            },
+            error => {
+              this.linksLoading = false
+              toast(error.message, "error");
+            }
+          );
         },
         changeTabInDrawer: function(tab) {
         	this.activeSideTab = tab;
