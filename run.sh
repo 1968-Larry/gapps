@@ -17,6 +17,7 @@ GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-60}
 GUNICORN_KEEP_ALIVE=${GUNICORN_KEEP_ALIVE:-60}
 
 start_server() {
+    python3 tools/apply_schema_updates.py || echo "[WARNING] Schema updates step failed"
     echo "[INFO] Starting the server with $GUNICORN_WORKERS workers"
     exec gunicorn --bind "0.0.0.0:$PORT" \
         flask_app:app \
