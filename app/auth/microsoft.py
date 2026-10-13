@@ -1,6 +1,7 @@
 from . import auth
 from flask import request, abort, redirect, url_for, session, current_app, flash
-from authlib.integrations.base_client.errors import MismatchingStateError
+from authlib.integrations.base_client.errors import MismatchingStateError, OAuthError
+from app.utils.audit import log_event
 from app.auth.flows import UserFlow
 import secrets
 
@@ -40,10 +41,42 @@ def authorize_with_microsoft():
     try:
         token = current_app.providers["microsoft"].authorize_access_token()
     except MismatchingStateError as e:
+        log_event(
+            "login_failed",
+            provider="microsoft",
+            result="failure",
+            metadata={"reason": "state_mismatch"},
+        )
         abort(403, "Mismatch error")
+    except OAuthError as e:
+        log_event(
+            "login_failed",
+            provider="microsoft",
+            result="failure",
+            metadata={"reason": "oauth_error", "error": getattr(e, "error", None)},
+        )
+        abort(403, "Authentication failed")
+    except Exception as e:
+        # e.g. TLS/network problems towards the identity provider
+        log_event(
+            "login_failed",
+            provider="microsoft",
+            result="error",
+            metadata={"reason": "provider_unreachable", "error": type(e).__name__},
+        )
+        raise
 
     nonce = session.pop("nonce", None)
-    user_info = current_app.providers["microsoft"].parse_id_token(token, nonce=nonce)
+    try:
+        user_info = current_app.providers["microsoft"].parse_id_token(token, nonce=nonce)
+    except Exception as e:
+        log_event(
+            "login_failed",
+            provider="microsoft",
+            result="failure",
+            metadata={"reason": "id_token_invalid", "error": type(e).__name__},
+        )
+        abort(403, "Invalid identity token")
 
     attributes = {"token": session.get("token")}
     return UserFlow(

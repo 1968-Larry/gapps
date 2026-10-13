@@ -10,25 +10,20 @@
     {% endblock %}
 
     <!-- Stylesheets -->
-    {% if config.PLAYGROUND_CSS %}
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.css" rel="stylesheet" type="text/css" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    {% else %}
     <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" type="text/css" />
-    {% endif %}
 
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='vendor/toastify/toastify.min.css') }}">
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/focus@3.x.x/dist/cdn.min.js"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+    <script defer src="{{ url_for('static', filename='vendor/alpine-focus/cdn.min.js') }}"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
 
-    <script defer src="https://unpkg.com/alpinejs@3.13.10/dist/cdn.min.js" defer></script>
+    <script defer src="{{ url_for('static', filename='vendor/alpinejs/cdn.min.js') }}" defer></script>
     {% block head %}
     {% endblock %}
 </head>
 {%block body%}
 {%endblock%}
-<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='vendor/toastify/toastify.min.js') }}"></script>
 <script>
   function toast(message,level="info") {
     var bg = "#367ff5"

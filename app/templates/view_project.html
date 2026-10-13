@@ -308,6 +308,12 @@
 						  <button x-show="selectedSubControl.has_evidence" @click="changeSubControlTabInDrawer('evidence')" :class="{'btn-active': activeSubSideTab==='evidence'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Evidence ('+selectedSubControl.evidence.length+')'"></span>
 						  </button>
+						  <button x-show="!selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							<i class="ti ti-x text-error my-auto text-lg mr-1"></i>Risks
+						  </button>
+						  <button x-show="selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Risks ('+selectedSubControl.risks.length+')'"></span>
+						  </button>
 						  <button @click="changeSubControlTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeSubSideTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100" x-text="'Comments ('+messagesForControl.length+')'"></button>
 						</div>
 					</div>
@@ -687,6 +693,10 @@
 											</template>
 										</select>
 									</div>
+									<div class="col-span-3">
+										<h4 class="subtitle text-sm">Ticket Number</h4>
+										<input type="text" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.ticket_number" class="input input-sm input-bordered w-full" placeholder="e.g. JIRA-1234"/>
+									</div>
 									<div class="col-span-6">
 										<h4 class="subtitle text-sm"><i x-show="!selectedSubControl.context" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Details</h4>
 										<textarea rows="5" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.context" :value="selectedSubControl.context" x-text="selectedSubControl.context" :class="{'border-warning animate-pulse': !selectedSubControl.context && selectedSubControl.implemented>0}" class="textarea w-full" placeholder="Add information about how the subcontrol is satisfied. Provide details on the scope and any context for the auditor."></textarea>
@@ -737,6 +747,7 @@
 											<th class="w-1 py-6"></th>
 											<th>Evidence Name</th>
 											<th>Description</th>
+											<th class="w-1">Link</th>
 											<th class="w-1">Attached File</th>
 											<th class="w-2 text-center">Actions</th>
 										  </tr>
@@ -747,6 +758,10 @@
 												<th></th>
 												<td x-text="item.name"></td>
 												<td x-text="item.description || 'No description'"></td>
+												<td>
+													<a x-show="item.link" :href="item.link" target="_blank" rel="noopener noreferrer" class="btn btn-xs bg-base-100"><i class="ti ti-external-link"></i></a>
+													<span x-show="!item.link" class="text-xs opacity-50">No link</span>
+												</td>
 												<td>
 													<div x-show="item.file_name" class="flex flex-row gap-x-2">
 														<i class="ti ti-download my-auto"></i>
@@ -762,6 +777,70 @@
 														<button @click="removeEvidenceIndex=item.id;showRemoveEvidenceModal=true" class="btn btn-xs"><i class="ti ti-trash text-error"></i></button>
 														<button @click="openEvidence(item)" class="btn btn-xs">View</button>
 
+													</div>
+												</td>
+											  </tr>
+											</template>
+										</tbody>
+									  </table>
+									</div>
+							</div>
+
+						</div>
+
+					</div>
+					<div x-show="activeSubSideTab==='risks'" class="card p-4">
+						<div class="overflow-auto">
+							<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!selectedSubControl.risks.length">
+								<div class="hero w-full h-full">
+									<div class="hero-content text-center flex flex-col justify-center w-full h-full">
+										<div class="max-w-md mx-auto">
+											<h1 class="text-2xl font-bold">No Risks</h1>
+											<p class="py-6">
+												No risks have been linked to this subcontrol. Attach an existing risk from the register.
+											</p>
+											<div class="flex flex-row gap-x-4 justify-center">
+												<button class="btn btn-sm bg-base-100" @click="showAttachRiskModal=true;attachRisk()">Attach Risk</button>
+												<button class="btn btn-sm btn-primary" @click="showCreateRisk=true;creatingRiskForSubControl=true">Create Risk</button>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div x-show="selectedSubControl.risks.length">
+								<div class="flex justify-between mb-2">
+									<h1 class="text-2xl font-semibold">Risks</h1>
+									<div class="flex flex-row gap-x-2">
+										<button class="btn btn-sm bg-base-100" @click="showAttachRiskModal=true;attachRisk()">Attach Risk</button>
+										<button class="btn btn-sm btn-primary" @click="showCreateRisk=true;creatingRiskForSubControl=true">Create Risk</button>
+									</div>
+								</div>
+								<div class="overflow-x-auto">
+									  <table class="table bg-base-100">
+										<thead>
+										  <tr>
+											<th class="w-1 py-6"></th>
+											<th>Title</th>
+											<th>Risk</th>
+											<th>Status</th>
+											<th class="w-2 text-center">Actions</th>
+										  </tr>
+										</thead>
+										<tbody>
+											<template x-for="(item, index) in selectedSubControl.risks">
+											  <tr>
+												<th></th>
+												<td x-text="item.title"></td>
+												<td>
+													<span :class="{'bg-primary': item.risk==='unknown', 'bg-info': item.risk==='low', 'bg-warning': item.risk==='moderate', 'bg-error': item.risk==='high' || item.risk==='critical'}" class="pill" x-text="item.risk"></span>
+												</td>
+												<td>
+													<span :class="{'bg-primary': item.status==='new', 'bg-warning': item.status==='in_progress', 'bg-success': item.status==='mitigated', 'bg-success opacity-80': item.status==='accepted'}" class="pill" x-text="item.status"></span>
+												</td>
+												<td>
+													<div class="flex flex-row gap-x-2">
+														<button @click="removeRiskIndex=item.id;showRemoveRiskModal=true" class="btn btn-xs"><i class="ti ti-trash text-error"></i></button>
 													</div>
 												</td>
 											  </tr>
@@ -903,6 +982,7 @@
 						<div role="tablist" class="tabs gap-x-2">
 					  <button @click="changeTabInDrawer('overview')" :class="{'btn-active': activeReportTab==='overview'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeReportTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Comments ('+riskMessages.length+')'"></button>
+					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+riskLinks.length+')'"></button>
 					</div>
 					</div>
 				</div>
@@ -971,6 +1051,34 @@
 								</div>
 							</div>
 						</div>
+					</div>
+
+					<div x-show="activeReportTab==='links'" class="card">
+						<div x-show="riskLinksLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+						<div x-show="!riskLinksLoading && riskLinks.length===0" class="text-center py-10">
+							<h1 class="text-lg font-semibold">Not linked to any control</h1>
+							<p class="text-sm opacity-70 mt-2">Link this risk from a sub-control (Risks tab).</p>
+						</div>
+						<table x-show="!riskLinksLoading && riskLinks.length>0" class="table table-sm">
+							<thead>
+								<tr><th>Project</th><th>Framework</th><th>Control</th></tr>
+							</thead>
+							<tbody>
+								<template x-for="link in riskLinks" :key="link.id">
+									<tr>
+										<td x-text="link.project"></td>
+										<td x-text="link.framework"></td>
+										<td>
+											<a :href="link.url" class="underline hover:opacity-75">
+												<span class="font-semibold" x-text="link.ref_code"></span>
+												<span x-text="link.name"></span>
+												<i class="ti ti-external-link text-xs"></i>
+											</a>
+										</td>
+									</tr>
+								</template>
+							</tbody>
+						</table>
 					</div>
 
 					<div x-show="activeReportTab==='comments'" class="flex-1 overflow-y-auto">
@@ -2485,7 +2593,7 @@
 								  clip-rule="evenodd" />
 							  </svg>
 							</label>
-							<button @click="showCreateRisk=true" class="btn my-auto btn-sm btn-success">Create Risk</button>
+							<button @click="showCreateRisk=true;creatingRiskForSubControl=false" class="btn my-auto btn-sm btn-success">Create Risk</button>
 							  <span class="my-auto" x-show="riskRowsSelected.length>0" x-text="'Rows selected: '+riskRowsSelected.length"></span>
 							  <div class="my-auto" x-show="riskRowsSelected.length>0">
 								<details class="dropdown dropdown-bottom dropdown-end">
@@ -2521,7 +2629,7 @@
 							  <p x-show="!hasFilter" class="py-4">
 								You have not logged any risks. Let's get started.
 							  </p>
-							  <button x-show="!hasFilter" @click="showCreateRisk=true" class="btn btn-sm btn-success">Create Risk</button>
+							  <button x-show="!hasFilter" @click="showCreateRisk=true;creatingRiskForSubControl=false" class="btn btn-sm btn-success">Create Risk</button>
 							  <p x-show="hasFilter" class="py-4">
 								The filter you applied does not match any reports.
 							  </p>
@@ -3557,6 +3665,16 @@
 					  <label class="block text-sm font-medium mb-2">Content</label>
 					  <textarea class="textarea textarea-bordered w-full" x-model="selectedEvidence.content" placeholder="Add content"></textarea>
 					</div>
+					<div class="col-span-6">
+					  <label class="block text-sm font-medium mb-2">Link</label>
+					  <input type="url"
+						   class="input input-sm input-bordered w-full"
+						   x-model="selectedEvidence.link"
+						   placeholder="https://... link to documentation or external reference"/>
+					  <a x-show="selectedEvidence.link" :href="selectedEvidence.link" target="_blank" rel="noopener noreferrer" class="text-xs underline inline-flex items-center gap-x-1 mt-1">
+						<i class="ti ti-external-link"></i>Open link
+					  </a>
+					</div>
 				   <div class="col-span-6">
 						  <div class="flex flex-row gap-x-2 mb-2">
 							<i x-show="!selectedEvidence.file_name" class="ti ti-alert-triangle text-error my-auto"></i>
@@ -3661,6 +3779,13 @@
 					  <textarea class="textarea textarea-bordered w-full" x-model="createEvidencePayload.content" placeholder="Add text based content for the evidence"></textarea>
 					</div>
 					<div class="col-span-6">
+					  <label class="block text-sm font-medium mb-2">Link</label>
+					  <input type="url"
+						   class="input input-sm input-bordered w-full"
+						   x-model="createEvidencePayload.link"
+						   placeholder="https://... link to documentation or external reference"/>
+					</div>
+					<div class="col-span-6">
 					  <label class="block text-sm font-medium mb-2">Evidence File</label>
 					  <input type="file" id="createEvidenceUploader">
 					  <p class="text-xs text-warning mt-2">Note: Only 1 evidence file is attached to each Evidence object.</p>
@@ -3710,6 +3835,61 @@
 					<button class="btn" @click="showAttachModal=false">Close</button>
 					<button @click="saveAttachedEvidence" class="btn btn-success">Update</button>
 				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal" x-bind:class="{ 'modal-open': showAttachRiskModal }">
+		<div class="modal-box max-w-2xl">
+			<form method="dialog">
+				<button @click="showAttachRiskModal=false"
+						class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕
+				</button>
+			</form>
+			<h2 class="text-xl font-semibold px-6 my-4">Attach Risk</h2>
+			<p class="text-sm font-semibold px-6 mb-4">Select a risk below to associate it with your subcontrol.</p>
+			<div class="grid grid-cols-10 gap-6 px-6 pt-0">
+
+				<div class="col-span-10">
+					<label class="block text-sm font-medium mb-2">Selected Risks</label>
+					<div class="msa-wrapper border border-base-content border-opacity-40 rounded-lg">
+						<input x-model="srSelectedString" type="text" id="msa-risk-input" aria-hidden="true" x-bind:aria-expanded="srListActive.toString()" aria-haspopup="tag-list" hidden>
+						<div class="input-presentation rounded-lg" @click="srListActive = !srListActive" @click.away="srListActive = false" x-bind:class="{'active': srListActive}">
+							<span class="text-sm font-semibold" x-show="srSelected.length == 0">Select Risk</span>
+							<template x-for="(tag, index) in srSelected">
+								<div class="tag-badge bg-base-200">
+									<span x-text="tag"></span>
+									<button x-bind:data-index="index" @click.stop="srRemoveMe($event)">x</button>
+								</div>
+							</template>
+						</div>
+						<ul class="overflow-auto h-52" id="tag-risk-list" x-show.transition="srListActive" role="listbox">
+							<template x-for="(tag, index, collection) in srUnselected">
+								<li class="hover:cursor-pointer hover:bg-base-200 hover:p-2 hover:rounded-lg mx-5 text-sm font-semibold mb-2" x-show="!srSelected.includes(tag)" x-bind:value="tag" x-text="tag" aria-role="button" @click.stop="srAddMe($event)" x-bind:data-index="index" role="option"></li>
+							</template>
+						</ul>
+					</div>
+				</div>
+			</div>
+			<div class="modal-action">
+				<button class="btn" @click="showAttachRiskModal=false">Close</button>
+				<button @click="saveAttachedRisk" class="btn btn-success">Update</button>
+			</div>
+		</div>
+	</div>
+
+	<div class="modal" x-bind:class="{ 'modal-open': showRemoveRiskModal }">
+		<div class="modal-box">
+			<form method="dialog">
+				<button @click="showRemoveRiskModal=false"
+						class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕
+				</button>
+			</form>
+			<h2 class="text-xl font-semibold px-6 my-4">Remove Risk</h2>
+			<p class="text-sm px-6 mb-4">Are you sure you want to remove this risk from the subcontrol? The risk itself will not be deleted from the register.</p>
+			<div class="modal-action">
+				<button class="btn" @click="showRemoveRiskModal = false">Close</button>
+				<button class="btn btn-error" @click="removeRisk(removeRiskIndex)">Remove</button>
 			</div>
 		</div>
 	</div>
@@ -4220,6 +4400,7 @@ function project(){
 		  }
 
 		  this.$watch('seSelected', value => seSelectedString = value.join(','))
+		  this.$watch('srSelected', value => srSelectedString = value.join(','))
 
 		  this.$watch(
 			"controlFilter", (newValue, oldValue) => {
@@ -4310,11 +4491,13 @@ function project(){
 		showDeleteMessage: false,
 		showRoleHelp: false,
 		showAttachModal: false,
+		showAttachRiskModal: false,
 		selectedUser: {},
 		addControlModal: false,
 		showEditUserModal: false,
 		showRemoveUserModal: false,
 		showRemoveEvidenceModal: false,
+		showRemoveRiskModal: false,
 		addUserId: null,
 		addUserRole: "viewer",
 		showAddUser: false,
@@ -4344,6 +4527,8 @@ function project(){
 		showDeleteControlMessage: false,
 		messages: [],
 		riskMessages: [],
+		riskLinks: [],
+		riskLinksLoading: false,
 		messagesForControl: [],
 		tenantPolicies: [],
 		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "users", "integrations", "report", "settings"],
@@ -4398,6 +4583,7 @@ function project(){
 		controlCurrentMessage: "",
 		updatedAccessLevel: false,
 		showCreateRisk: false,
+		creatingRiskForSubControl: false,
 		riskPayload: {},
 		controlApplicableCount: 0,
 		controlCompleteCount: 0,
@@ -4410,6 +4596,7 @@ function project(){
 		editSubColumnsModal: false,
 		disableRefreshBtn: false,
 		removeEvidenceIndex: "",
+		removeRiskIndex: "",
 		loadingProjectData: true,
 		showCreateEvidenceModal: false,
 		showViewEvidenceModal: false,
@@ -5085,8 +5272,26 @@ function project(){
         		this.selectedReport.risk_level = 10
         	}
 			this.riskMessages = report.comments;
+			this.getRiskLinks(report)
 			document.getElementById('report-drawer').checked = true;
         },		
+		getRiskLinks: function(report) {
+			this.riskLinks = []
+			this.riskLinksLoading = true
+			request("GET",
+				`/api/v1/risks/${report.id}/links`,
+				data => {
+					if (this.selectedReport && this.selectedReport.id === report.id) {
+						this.riskLinks = data
+					}
+					this.riskLinksLoading = false
+				},
+				error => {
+					this.riskLinksLoading = false
+					toast(error.message, "error");
+				}
+			);
+		},
 		closeReportDrawer: function() {
 			this.previousSelectedReport = this.selectedReport
 			this.selectedReport = {}
@@ -5766,7 +5971,8 @@ function project(){
 				"applicable": subcontrol.is_applicable,
 				"implemented": subcontrol.implemented,
 				"owner-id": subcontrol.owner_id,
-				"context": subcontrol.context
+				"context": subcontrol.context,
+				"ticket_number": subcontrol.ticket_number
 			}
 
 			request("PUT",
@@ -6424,6 +6630,22 @@ function project(){
 					this.risks.push(data)
 					this.showCreateRisk = false
 					this.riskPayload = {}
+
+					if (this.creatingRiskForSubControl && this.selectedSubControl) {
+						request("PUT",
+							`/api/v1/subcontrols/${this.selectedSubControl.id}/associate-risk`,
+							assocData => {
+								toast("Created and attached risk", level="success", duration=2000, bottom=true)
+								this.refreshControlFromServer(this.selectedControl.id)
+								return(assocData)
+							},
+							error => {
+							  toast(error.message, "error");
+							},
+							{"risk": [data.id]}
+						);
+					}
+					this.creatingRiskForSubControl = false
 				},
 				error => {
 				  toast(error.message, "error");
@@ -6984,6 +7206,75 @@ function project(){
 			}
 		  }
 		},
+		attachRisk: function() {
+		  this.srUnselected = [];
+		  this.srSelected = [];
+
+		  var currentRisks = this.selectedSubControl.risks;
+		  for (var item of this.risks) {
+			// Check if the item's id exists in currentRisks
+			var isSelected = currentRisks.some(risk => risk.id === item.id);
+
+			if (isSelected) {
+			  this.srSelected.push(item.title);
+			} else {
+			  this.srUnselected.push(item.title);
+			}
+		  }
+		},
+		saveAttachedRisk: function() {
+		  let newList = [];
+		  for (const item of this.srSelected) {
+			const foundObject = this.risks.find(obj => obj.title === item);
+			if (foundObject) {
+				newList.push(foundObject.id)
+			}
+		  }
+
+		  data = {
+			"risk": newList
+		  }
+		  request("PUT",
+			`/api/v1/subcontrols/${this.selectedSubControl.id}/associate-risk`,
+			data => {
+			  toast("Updated risks", level="success", duration=2000, bottom=true)
+			  this.refreshControlFromServer(this.selectedControl.id)
+			  this.showAttachRiskModal = false
+			  return(data)
+			},
+			error => {
+			  toast(error.message, "error");
+			},
+			data
+		  );
+		},
+		removeRisk: function(id) {
+			const risk = this.selectedSubControl.risks.find(risk => risk.id === id);
+
+			if (!risk) {
+			  this.showRemoveRiskModal = false;
+			  toast("Not able to find risk", "error")
+			  return
+			}
+			data = {
+			  "risk": risk.id
+			}
+			request("DELETE",
+				`/api/v1/subcontrols/${this.selectedSubControl.id}/disassociate-risk`,
+				data => {
+					toast("Removed risk", level="success", duration=2000, bottom=true)
+					this.selectedSubControl = data;
+
+					this.refreshControlFromServer(this.selectedControl.id)
+					this.showRemoveRiskModal = false;
+					return(data)
+				},
+				error => {
+				  toast(error.message, "error");
+				},
+				data
+			);
+		},
 		scrollDiv: function() {
 		  var objDiv = document.getElementById("evidence-body");
 		  objDiv.scrollTop = objDiv.scrollHeight;
@@ -6998,6 +7289,7 @@ function project(){
 		  fd.append("name", item.name)
 		  fd.append("content", item.content)
 		  fd.append("description", item.description)
+		  fd.append("link", item.link || "")
 
 		  fetch(`/api/v1/evidence/${item.id}`, {
 			  method: "PUT",
@@ -7034,6 +7326,7 @@ function project(){
 		  fd.append("name", this.createEvidencePayload.name)
 		  fd.append("description", this.createEvidencePayload.description)
 		  fd.append("content", this.createEvidencePayload.content)
+		  fd.append("link", this.createEvidencePayload.link || "")
 
 		  let url = `/api/v1/projects/${this.projectId}/evidence`;
 		  let is_subcontrol = false;
@@ -7129,6 +7422,21 @@ function project(){
 		  const index = e.target.dataset.index;
 		  const extracted = this.seSelected.splice(index, 1);
 		  this.seUnselected.push(extracted[0]);
+		},
+		// Attach Risk to Subcontrol
+		srListActive: false,
+		srSelectedString: '',
+		srSelected: [],
+		srUnselected: [],
+		srAddMe(e) {
+		  const index = e.target.dataset.index;
+		  const extracted = this.srUnselected.splice(index, 1);
+		  this.srSelected.push(extracted[0]);
+		},
+		srRemoveMe(e) {
+		  const index = e.target.dataset.index;
+		  const extracted = this.srSelected.splice(index, 1);
+		  this.srUnselected.push(extracted[0]);
 		},
 		// feedback module
 		addItem: function() {

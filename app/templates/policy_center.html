@@ -1,10 +1,9 @@
 {% extends "layouts/empty.html" %}
 
 {%block head%}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/6.2.0/tinymce.min.js"
-        integrity="sha512-tofxIFo8lTkPN/ggZgV89daDZkgh1DunsMYBq41usfs3HbxMRVHWFAjSi/MXrT+Vw5XElng9vAfMmOWdLg0YbA=="
-        crossorigin="anonymous" referrerpolicy="no-referrer" xmlns:x-bind="http://www.w3.org/1999/xhtml"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tinymce-variable@0.9.2/src/plugin.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/tinymce/tinymce.min.js') }}"
+        xmlns:x-bind="http://www.w3.org/1999/xhtml"></script>
+    <script src="{{ url_for('static', filename='vendor/tinymce-variable/plugin.min.js') }}"></script>
 <style>
 .tox-tinymce {
     border: 0px !important;

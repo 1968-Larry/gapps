@@ -11,6 +11,7 @@ from app.utils.decorators import login_required
 from app.models import Role, Logs
 from app.utils.authorizer import Authorizer
 from app.utils import misc
+from app.utils.audit import log_event
 
 
 @main.route("/admin/users", methods=["GET"])
@@ -67,6 +68,7 @@ def change_password(uid):
         return redirect(url_for("main.user_profile", uid=uid))
     user.set_password(password, set_pwd_change=True)
     db.session.commit()
+    log_event("password_changed", metadata={"target": user.email})
     flash("Successfully changed password of:{}".format(user.email))
     Logs.add(
         message=f"{current_user.email} changed password of {user.email}",

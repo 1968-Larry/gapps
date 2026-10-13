@@ -324,12 +324,23 @@ class SubControlMixin(object):
         data["has_evidence"] = False
         if data["evidence"]:
             data["has_evidence"] = True
+
+        data["risks"] = self.get_risks(as_dict=True)
+        data["has_risks"] = False
+        if data["risks"]:
+            data["has_risks"] = True
         return data
 
     def get_evidence(self, as_dict=False):
         query = self.evidence.all()
         if as_dict:
             return [evidence.as_dict() for evidence in query]
+        return query
+
+    def get_risks(self, as_dict=False):
+        query = self.risks.all()
+        if as_dict:
+            return [risk.as_dict() for risk in query]
         return query
 
     def get_completion_progress(self):

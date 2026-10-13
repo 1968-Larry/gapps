@@ -2,6 +2,7 @@ from flask import abort, flash, redirect, url_for, session, current_app
 from app.utils.decorators import custom_login
 from app.models import db, User
 from app.utils import misc
+from app.utils.audit import log_event
 
 
 class UserFlow:
@@ -41,15 +42,27 @@ class UserFlow:
             "last": self.user_info.get("family_name"),
         }
         if not self.user_dict["email"]:
+            log_event(
+                "login_failed",
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "missing_email_claim"},
+            )
             abort(422, "Missing required field: email")
 
     def parse_microsoft_info(self):
         self.user_dict = {
             "email": self.user_info.get("email"),
-            "first": self.user_info.get("name"),
-            "last": None,
+            "first": self.user_info.get("given_name") or self.user_info.get("name"),
+            "last": self.user_info.get("family_name"),
         }
         if not self.user_dict["email"]:
+            log_event(
+                "login_failed",
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "missing_email_claim"},
+            )
             abort(422, "Missing required field: email")
 
     def parse_local_info(self):
@@ -90,10 +103,18 @@ class UserFlow:
 
     def _handle_login(self, user=None):
         """Handles login flow."""
+        email = self.user_dict["email"]
         if user is None:
-            user = User.find_by_email(self.user_dict["email"])
+            user = User.find_by_email(email)
 
         if not user:
+            log_event(
+                "login_failed",
+                email=email,
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "account_not_found"},
+            )
             # If user does not exist but self-service registration is enabled, redirect
             if current_app.is_self_registration_enabled:
                 flash("Unable to find account. Please create one.", "warning")
@@ -103,9 +124,17 @@ class UserFlow:
         if self.provider == "local" and not user.check_password(
             self.user_dict["password"]
         ):
+            log_event(
+                "login_failed",
+                email=email,
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "invalid_password"},
+            )
             abort(403, "Invalid password")
 
         custom_login(user)
+        log_event("login_success", email=user.email, provider=self.provider)
 
         # Have user create tenant if they don't have any
         if get_started := self.should_we_create_tenant(user):
@@ -113,7 +142,7 @@ class UserFlow:
 
         return redirect(self.next_page or url_for("main.home"))
 
-    def _handle_register(self):
+    def _handle_register(self, token=None):
         """
         Handles self-service registration flow. This flow will only be used
         when self-service registration is enabled (current_app.is_self_registration_enabled).
@@ -146,14 +175,28 @@ class UserFlow:
             user_object["confirmed"] = True
 
         user = User.add(**user_object)
+        log_event("user_registered", email=user.email, provider=self.provider)
         return self._handle_login(user)
 
     def _handle_accept(self, token):
         """Handles user accepting tenant invite flow."""
         if not (result := User.verify_invite_token(token)):
+            log_event(
+                "invite_accept_failed",
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "invalid_or_expired_token"},
+            )
             abort(403, "Invalid or expired invite token")
 
         if not (user := User.find_by_email(result.get("email"))):
+            log_event(
+                "invite_accept_failed",
+                email=result.get("email"),
+                provider=self.provider,
+                result="failure",
+                metadata={"reason": "email_not_found"},
+            )
             abort(403, "Invalid token: email not found")
 
         user.first_name = self.user_dict["first"] or user.first_name
@@ -172,6 +215,7 @@ class UserFlow:
 
         db.session.commit()
         custom_login(user)
+        log_event("invite_accepted", email=user.email, provider=self.provider)
         return redirect(self.next_page or url_for("main.home"))
 
     def should_we_create_tenant(self, user):

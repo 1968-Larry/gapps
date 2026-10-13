@@ -15,6 +15,7 @@ from sqlalchemy import func
 from app.email import send_email
 from app.utils.reports import Report
 from app.utils.authorizer import Authorizer
+from app.utils.audit import log_event
 
 @api.route("/tenants/<string:id>/frameworks", methods=["GET"])
 @login_required
@@ -265,8 +266,14 @@ def create_policy_for_tenant(tid):
 @login_required
 def reload_tenant_frameworks(tid):
     result = Authorizer(current_user).can_user_admin_tenant(tid)
-    result["extra"]["tenant"].create_base_frameworks()
-    return jsonify({"message": "ok"})
+    added = result["extra"]["tenant"].create_base_frameworks()
+    if added:
+        log_event(
+            "frameworks_reloaded",
+            tenant=tid,
+            metadata={"tenant_name": result["extra"]["tenant"].name, "added": added},
+        )
+    return jsonify({"message": "ok", "added": added})
 
 
 @api.route("/tenants/<string:tid>/load-policies", methods=["PUT"])
@@ -366,6 +373,7 @@ def update_evidence(eid):
         name=request.form.get("name"),
         description=request.form.get("description"),
         content=request.form.get("content"),
+        link=request.form.get("link"),
         collected_on=request.form.get("collected"),
         file=request.files.get("file"),
     )
@@ -759,6 +767,7 @@ def update_subcontrols_in_control_for_project(cid, sid):
         context=payload.get("context"),
         evidence=payload.get("evidence"),
         owner_id=payload.get("owner-id"),
+        ticket_number=payload.get("ticket_number"),
     )
     return jsonify(subcontrol.as_dict())
 
@@ -1059,6 +1068,7 @@ def create_evidence_for_project(id):
         name=request.form.get("name"),
         content=request.form.get("content"),
         description=request.form.get("description"),
+        link=request.form.get("link"),
         owner_id=current_user.id,
         file=request.files.get("file"),
     )
@@ -1096,6 +1106,7 @@ def add_evidence_for_subcontrol(pid, sid):
         name=request.form.get("name"),
         content=request.form.get("content"),
         description=request.form.get("description"),
+        link=request.form.get("link"),
         owner_id=current_user.id,
         file=request.files.get("file"),
         associate_with=[sid],
@@ -1118,6 +1129,24 @@ def disassociate_evidence_with_subcontrol(sid):
     result = Authorizer(current_user).can_user_manage_project_subcontrol(sid)
     data = request.get_json()
     result["extra"]["subcontrol"].disassociate_with_evidence(data["evidence"])
+    return jsonify(result["extra"]["subcontrol"].as_dict())
+
+
+@api.route("/subcontrols/<string:sid>/associate-risk", methods=["PUT"])
+@login_required
+def associate_risk_with_subcontrol(sid):
+    result = Authorizer(current_user).can_user_manage_project_subcontrol(sid)
+    data = request.get_json()
+    result["extra"]["subcontrol"].associate_with_risk(data["risk"])
+    return jsonify(result["extra"]["subcontrol"].as_dict())
+
+
+@api.route("/subcontrols/<string:sid>/disassociate-risk", methods=["DELETE"])
+@login_required
+def disassociate_risk_with_subcontrol(sid):
+    result = Authorizer(current_user).can_user_manage_project_subcontrol(sid)
+    data = request.get_json()
+    result["extra"]["subcontrol"].disassociate_with_risk(data["risk"])
     return jsonify(result["extra"]["subcontrol"].as_dict())
 
 
@@ -1153,6 +1182,34 @@ def remove_tag_from_control(cid):
     for tag in data.get("tags"):
         result["extra"]["control"].remove_tag(tag)
     return jsonify({"message": "ok"})
+
+
+def _visible_links(subcontrols):
+    """Sub-control link info, limited to projects the current user can open."""
+    authorizer = Authorizer(current_user)
+    links = []
+    for subcontrol in subcontrols:
+        if not authorizer._can_user_access_project(subcontrol.p_control.project):
+            continue
+        links.append(models.subcontrol_link_info(subcontrol))
+    links.sort(key=lambda x: (x["project"], x["framework"], x["ref_code"] or ""))
+    return links
+
+
+@api.route("/risks/<string:id>/links", methods=["GET"])
+@login_required
+def get_links_for_risk(id):
+    result = Authorizer(current_user).can_user_read_risk(id)
+    risk = result["extra"]["risk"]
+    return jsonify(_visible_links(risk.project_subcontrols.all()))
+
+
+@api.route("/evidence/<string:eid>/links", methods=["GET"])
+@login_required
+def get_links_for_evidence(eid):
+    result = Authorizer(current_user).can_user_read_evidence(eid)
+    evidence = result["extra"]["evidence"]
+    return jsonify(_visible_links(evidence.get_controls()))
 
 
 @api.route("/risks/<string:id>/comments", methods=["POST"])

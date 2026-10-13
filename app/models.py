@@ -32,6 +32,7 @@ import shortuuid
 from app.utils.file_handler import FileStorageHandler
 from typing import List
 from app.utils.exceptions import FileDoesNotExist
+from app.utils.audit import log_event
 
 
 class Finding(db.Model):
@@ -903,9 +904,28 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
             if role:
                 new_roles.append(role)
 
+        before = [r.name for r in member.roles.all()]
         member.roles = new_roles
         db.session.commit()
+        self._audit_role_change(user, before, [r.name for r in new_roles])
         return member
+
+    def _audit_role_change(self, user, before, after):
+        """Role changes go through a secondary table (no ORM events), so log them here."""
+        added = sorted(set(after) - set(before))
+        removed = sorted(set(before) - set(after))
+        if added or removed:
+            log_event(
+                "member_roles_changed",
+                tenant=self.id,
+                metadata={
+                    "target": user.email,
+                    "tenant_name": self.name,
+                    "added": added,
+                    "removed": removed,
+                    "roles": sorted(after),
+                },
+            )
 
     def remove_member(self, user):
         """
@@ -931,12 +951,14 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         if not member:
             raise ValueError(f"User {user.email} is not a member of {self.name}")
 
+        before = [r.name for r in member.roles.all()]
         for role_name in role_names:
             role = Role.find_by_name(role_name)
             if role and role not in member.roles:
                 member.roles.append(role)
 
         db.session.commit()
+        self._audit_role_change(user, before, [r.name for r in member.roles.all()])
         return member
 
     def remove_role_for_member(self, user, role_names):
@@ -953,12 +975,14 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         if not member:
             raise ValueError(f"User {user.email} is not a member of {self.name}")
 
+        before = [r.name for r in member.roles.all()]
         for role_name in role_names:
             role = Role.find_by_name(role_name)
             if role and role in member.roles:
                 member.roles.remove(role)
 
         db.session.commit()
+        self._audit_role_change(user, before, [r.name for r in member.roles.all()])
         return member
 
     @validates("license")
@@ -1162,14 +1186,16 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         folder = current_app.config["FRAMEWORK_FOLDER"]
         if not os.path.isdir(folder):
             abort(422, f"Folder does not exist: {folder}")
-        for file in os.listdir(folder):
+        added = []
+        for file in sorted(os.listdir(folder)):
             if file.endswith(".json"):
                 name = file.split(".json")[0]
                 if not Framework.find_by_name(name, self.id):
                     Framework.create(name, self)
+                    added.append(name)
                     if init_controls:
                         self.create_base_controls_for_framework(name)
-        return True
+        return added
 
     def create_base_policies(self):
         for filename in os.listdir(current_app.config["POLICY_FOLDER"]):
@@ -1222,7 +1248,13 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
 
     def remove_user_from_projects(self, user):
         for project in self.projects.all():
-            project.members.filter(ProjectMember.user_id == user.id).delete()
+            removed = project.members.filter(ProjectMember.user_id == user.id).delete()
+            if removed:
+                log_event(
+                    "project_member_removed",
+                    tenant=self.id,
+                    metadata={"target": user.email, "project": project.name},
+                )
         db.session.commit()
         return True
 
@@ -1404,6 +1436,7 @@ class ProjectEvidence(db.Model, QueryMixin):
     name = db.Column(db.String(), nullable=False)
     description = db.Column(db.String(), default="Empty description")
     content = db.Column(db.String())
+    link = db.Column(db.String())
     group = db.Column(db.String(), default="default")
     collected_on = db.Column(db.DateTime, default=datetime.utcnow)
     file_name = db.Column(db.String())
@@ -1444,6 +1477,7 @@ class ProjectEvidence(db.Model, QueryMixin):
         owner_id=None,
         description=None,
         content=None,
+        link=None,
         group=None,
         collected_on=None,
         file=None,
@@ -1457,6 +1491,7 @@ class ProjectEvidence(db.Model, QueryMixin):
             owner_id: ID of the user who owns the evidence
             description: Description of the evidence
             content: Content, typically JSON/CSV results that represents the evidence
+            link: Optional URL pointing to external documentation for the evidence
             group: Logically group the evidence for filtering
             collected_on: Date at which it is collected
             file: FileStorage file
@@ -1474,6 +1509,8 @@ class ProjectEvidence(db.Model, QueryMixin):
             self.description = description
         if content:
             self.content = content
+        if link is not None:
+            self.link = link
         if group:
             self.group = group
         if collected_on:
@@ -1489,14 +1526,14 @@ class ProjectEvidence(db.Model, QueryMixin):
         return self
 
     def remove_controls(self, control_ids: List[int] = []):
+        # Deleted through the ORM (not a bulk Query.delete) so each unlink is audited
+        query = EvidenceAssociation.query.filter(
+            EvidenceAssociation.evidence_id == self.id
+        )
         if control_ids:
-            EvidenceAssociation.query.filter(
-                EvidenceAssociation.evidence_id == self.id
-            ).filter(EvidenceAssociation.control_id.in_(control_ids)).delete()
-        else:
-            EvidenceAssociation.query.filter(
-                EvidenceAssociation.evidence_id == self.id
-            ).delete()
+            query = query.filter(EvidenceAssociation.control_id.in_(control_ids))
+        for assoc in query.all():
+            db.session.delete(assoc)
         db.session.commit()
 
     def associate_with_controls(self, control_ids: List[int]):
@@ -1510,8 +1547,18 @@ class ProjectEvidence(db.Model, QueryMixin):
         Returns:
             None
         """
-        self.remove_controls()
-        EvidenceAssociation.add(control_ids, self.id)
+        # Only touch what actually changed, so unchanged links are neither deleted
+        # nor re-created (keeps the audit trail truthful and quiet).
+        wanted = set(control_ids or [])
+        current = {
+            a.control_id
+            for a in EvidenceAssociation.query.filter(
+                EvidenceAssociation.evidence_id == self.id
+            ).all()
+        }
+        if current - wanted:
+            self.remove_controls(list(current - wanted))
+        EvidenceAssociation.add(list(wanted - current), self.id)
 
     def get_controls(self):
         id_list = [
@@ -1652,6 +1699,30 @@ class ProjectEvidence(db.Model, QueryMixin):
         return True
 
 
+
+def subcontrol_link_info(subcontrol):
+    """
+    Describe where a ProjectSubControl lives, for the "Linked to" tabs on
+    risks and evidence. `url` deep-links straight into the sub-control drawer.
+    """
+    p_control = subcontrol.p_control
+    project_id = subcontrol.project_id
+    return {
+        "id": subcontrol.id,
+        "name": subcontrol.subcontrol.name,
+        "ref_code": subcontrol.subcontrol.ref_code,
+        "parent_control": p_control.control.name,
+        "framework": p_control.control.framework.name,
+        "project_id": project_id,
+        "project": p_control.project.name,
+        "url": (
+            f"/projects/{project_id}?tab=controls"
+            f"&control-id={p_control.id}&subcontrol-id={subcontrol.id}"
+            f"&drawer-subtab=details"
+        ),
+    }
+
+
 class EvidenceAssociation(db.Model):
     __tablename__ = "evidence_association"
     id = db.Column(
@@ -1701,6 +1772,58 @@ class EvidenceAssociation(db.Model):
 
         for control_id in control_ids:
             assoc = EvidenceAssociation.exists(control_id, evidence_id)
+            if assoc:
+                db.session.delete(assoc)
+        if commit:
+            db.session.commit()
+        return True
+
+
+class RiskAssociation(db.Model):
+    __tablename__ = "risk_association"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    control_id = db.Column(
+        db.String(), db.ForeignKey("project_subcontrols.id", ondelete="CASCADE")
+    )
+    risk_id = db.Column(
+        db.String(), db.ForeignKey("risk_register.id", ondelete="CASCADE")
+    )
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def exists(control_id, risk_id):
+        return (
+            RiskAssociation.query.filter(RiskAssociation.control_id == control_id)
+            .filter(RiskAssociation.risk_id == risk_id)
+            .first()
+        )
+
+    @staticmethod
+    def add(control_ids, risk_id, commit=True):
+        if not isinstance(control_ids, list):
+            control_ids = [control_ids]
+
+        for control_id in control_ids:
+            if not RiskAssociation.exists(control_id, risk_id):
+                assoc = RiskAssociation(control_id=control_id, risk_id=risk_id)
+                db.session.add(assoc)
+        if commit:
+            db.session.commit()
+        return True
+
+    @staticmethod
+    def remove(control_ids, risk_id, commit=True):
+        if not isinstance(control_ids, list):
+            control_ids = [control_ids]
+
+        for control_id in control_ids:
+            assoc = RiskAssociation.exists(control_id, risk_id)
             if assoc:
                 db.session.delete(assoc)
         if commit:
@@ -2317,6 +2440,7 @@ class Project(db.Model, DateMixin):
         owner_id,
         description=None,
         content=None,
+        link=None,
         group=None,
         collected_on=None,
         file=None,
@@ -2330,6 +2454,7 @@ class Project(db.Model, DateMixin):
             owner_id: ID of the user who owns the evidence
             description: Description of the evidence
             content: Content, typically JSON/CSV results that represents the evidence
+            link: Optional URL pointing to external documentation for the evidence
             group: Logically group the evidence for filtering
             collected_on: Date at which it is collected
             file: FileStorage file
@@ -2348,6 +2473,7 @@ class Project(db.Model, DateMixin):
             name=name,
             description=description,
             content=content,
+            link=link,
             group=group,
             collected_on=collected_on,
             owner_id=owner_id,
@@ -2420,6 +2546,11 @@ class Project(db.Model, DateMixin):
             return True
         self.members.filter(ProjectMember.user_id == user.id).delete()
         db.session.commit()
+        log_event(
+            "project_member_removed",
+            tenant=self.tenant_id,
+            metadata={"target": user.email, "project": self.name},
+        )
         return True
 
     def has_member(self, user_or_email):
@@ -3267,6 +3398,7 @@ class ProjectSubControl(db.Model, SubControlMixin):
     is_applicable = db.Column(db.Boolean(), default=True)
     context = db.Column(db.String())
     notes = db.Column(db.String())
+    ticket_number = db.Column(db.String())
     """
     framework specific fields
     """
@@ -3281,6 +3413,15 @@ class ProjectSubControl(db.Model, SubControlMixin):
     evidence = db.relationship(
         "ProjectEvidence",
         secondary="evidence_association",
+        lazy="dynamic",
+        backref=db.backref("project_subcontrols", lazy="dynamic"),
+    )
+    """
+    may have multiple risks tied to each control
+    """
+    risks = db.relationship(
+        "RiskRegister",
+        secondary="risk_association",
         lazy="dynamic",
         backref=db.backref("project_subcontrols", lazy="dynamic"),
     )
@@ -3322,6 +3463,22 @@ class ProjectSubControl(db.Model, SubControlMixin):
             EvidenceAssociation.remove(self.id, record)
         return True
 
+    def associate_with_risk(self, risk_id):
+        if isinstance(risk_id, str):
+            risk_id = [risk_id]
+
+        for record in risk_id:
+            RiskAssociation.add(self.id, record)
+        return True
+
+    def disassociate_with_risk(self, risk_id):
+        if isinstance(risk_id, str):
+            risk_id = [risk_id]
+
+        for record in risk_id:
+            RiskAssociation.remove(self.id, record)
+        return True
+
     def update(
         self,
         applicable=None,
@@ -3330,6 +3487,7 @@ class ProjectSubControl(db.Model, SubControlMixin):
         context=None,
         evidence=None,
         owner_id=None,
+        ticket_number=None,
     ):
         """
         Update subcontrol for a project
@@ -3352,6 +3510,9 @@ class ProjectSubControl(db.Model, SubControlMixin):
 
         if owner_id:
             self.owner_id = owner_id
+
+        if ticket_number is not None:
+            self.ticket_number = ticket_number
 
         db.session.commit()
         return self

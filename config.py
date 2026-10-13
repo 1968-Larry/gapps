@@ -83,6 +83,27 @@ class Config:
     MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID")
     MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET")
 
+    # Microsoft sign-in: set ADFS_SERVER (FQDN only, e.g. sts.example.com) to log in
+    # against an on-prem ADFS. If it is empty the standard Entra ID / Azure AD
+    # endpoints are used (MICROSOFT_TENANT_ID optional, defaults to "common").
+    ADFS_SERVER = (
+        (os.environ.get("ADFS_SERVER") or "")
+        .strip()
+        .replace("https://", "")
+        .replace("http://", "")
+        .strip("/")
+    ) or None
+    MICROSOFT_TENANT_ID = os.environ.get("MICROSOFT_TENANT_ID")
+
+    # Security audit log (JSON Lines on disk, one file per UTC day:
+    # audit-YYYY-MM-DD.log next to AUDIT_LOG_PATH). 0 retention = never delete locally.
+    AUDIT_LOG_ENABLED = os.environ.get("AUDIT_LOG_ENABLED", "true").lower() == "true"
+    AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH", "/var/log/app/audit.log")
+    AUDIT_LOG_RETENTION_DAYS = int(os.environ.get("AUDIT_LOG_RETENTION_DAYS", 90))
+    AUDIT_TRUST_FORWARDED_FOR = (
+        os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
+    )
+
     UPLOAD_FOLDER = os.environ.get(
         "UPLOAD_FOLDER", os.path.join(basedir, "app/files/reports")
     )
@@ -128,7 +149,6 @@ class Config:
         os.environ.get("DEBUG_ENV_VARS", "STORAGE_METHOD").upper().split(",")
     )
 
-    PLAYGROUND_CSS = os.environ.get("PLAYGROUND_CSS")
     LAYOUT = {
         "header": True,
         "footer": False,
