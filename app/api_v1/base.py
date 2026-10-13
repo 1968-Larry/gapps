@@ -13,6 +13,7 @@ from app.utils.decorators import login_required
 from app.email import send_email
 from app.utils.authorizer import Authorizer
 from app.utils import misc
+from app.utils.audit import log_event
 import arrow
 
 
@@ -209,6 +210,7 @@ def change_password(uid):
         abort(422, "Invalid password")
     user.set_password(password, set_pwd_change=True)
     db.session.commit()
+    log_event("password_changed", metadata={"target": user.email})
     return jsonify({"message": "Successfully updated the password"})
 
 
@@ -217,6 +219,7 @@ def change_password(uid):
 def generate_api_token():
     expiration = int(request.args.get("expiration", 600))
     token = current_user.generate_auth_token(expiration=expiration)
+    log_event("api_token_issued", metadata={"expires_in": expiration})
     return jsonify({"token": token, "expires_in": expiration})
 
 

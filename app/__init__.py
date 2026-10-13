@@ -7,6 +7,7 @@ from flask_login import LoginManager
 from authlib.integrations.flask_client import OAuth
 from sqlalchemy import exc
 import logging
+from app.utils.audit import configure_audit_logger, log_event
 
 
 db = SQLAlchemy()
@@ -27,6 +28,7 @@ def create_app(config_name="default"):
     configure_auth_providers(app)
     configure_errors(app)
     configure_logging(app)
+    configure_audit_logger(app)
     set_config_options(app)
 
     """
@@ -48,16 +50,31 @@ def configure_auth_providers(app):
         server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
         client_kwargs={"scope": "openid email profile"},
     )
+    # Microsoft: on-prem ADFS when ADFS_SERVER is set, otherwise Entra ID / Azure AD
+    adfs_server = app.config.get("ADFS_SERVER")
+    if adfs_server:
+        ms_authorize_url = f"https://{adfs_server}/adfs/oauth2/authorize"
+        ms_token_url = f"https://{adfs_server}/adfs/oauth2/token"
+        ms_jwks_uri = f"https://{adfs_server}/adfs/discovery/keys"
+    else:
+        tenant = app.config.get("MICROSOFT_TENANT_ID") or "common"
+        ms_authorize_url = (
+            f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize"
+        )
+        ms_token_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token"
+        ms_jwks_uri = f"https://login.microsoftonline.com/{tenant}/discovery/v2.0/keys"
+    app.microsoft_auth_mode = "adfs" if adfs_server else "azure"
+
     app.providers["microsoft"] = oauth.register(
         name="microsoft",
         client_id=app.config.get("MICROSOFT_CLIENT_ID"),
         client_secret=app.config.get("MICROSOFT_CLIENT_SECRET"),
-        authorize_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        authorize_url=ms_authorize_url,
         authorize_params=None,
-        access_token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        access_token_url=ms_token_url,
         access_token_params=None,
         client_kwargs={"scope": "openid email profile"},
-        jwks_uri="https://login.microsoftonline.com/common/discovery/v2.0/keys",
+        jwks_uri=ms_jwks_uri,
     )
     app.is_google_auth_configured = False
     app.is_microsoft_auth_configured = False
@@ -152,6 +169,17 @@ def configure_errors(app):
 
     @app.errorhandler(403)
     def not_authorized(e):
+        # Login failures are already audited with a precise reason in the auth
+        # flow, so only log authorization failures elsewhere in the app.
+        if request.blueprint != "auth":
+            log_event(
+                "access_denied",
+                result="failure",
+                metadata={
+                    "req": f"{request.method} {request.path}",
+                    "reason": e.description if isinstance(e.description, str) else None,
+                },
+            )
         return handle_error(e, "Unauthorized")
 
     @app.errorhandler(500)

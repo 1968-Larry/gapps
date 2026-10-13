@@ -11,6 +11,7 @@ from app.models import *
 from app.email import send_email
 from app.utils import misc
 from app.auth.flows import UserFlow
+from app.utils.audit import log_event
 
 
 @auth.route("/login", methods=["GET"])
@@ -30,6 +31,8 @@ def post_login():
 
 @auth.route("/logout")
 def logout():
+    if current_user.is_authenticated:
+        log_event("logout", email=current_user.email)
     logout_user()
     flash("You are logged out", "success")
     return redirect(url_for("auth.get_login"))
@@ -67,9 +70,25 @@ def login_with_magic_link(tid):
         if not (user := User.find_by_email(email)):
             flash("Invalid email", "warning")
             tenant.add_log(message=f"invalid email for {email}", level="warning")
+            log_event(
+                "login_failed",
+                email=email,
+                provider="magic_link",
+                result="failure",
+                tenant=tid,
+                metadata={"reason": "account_not_found"},
+            )
             return redirect(url_for("auth.login_with_magic_link", tid=tid))
         if not user.is_active:
             flash("User is inactive", "warning")
+            log_event(
+                "login_failed",
+                email=email,
+                provider="magic_link",
+                result="failure",
+                tenant=tid,
+                metadata={"reason": "account_inactive"},
+            )
             tenant.add_log(
                 message=f"inactive user tried to login:{email}",
                 level="warning",
@@ -107,6 +126,12 @@ def login_with_magic_link(tid):
 def validate_magic_link(token):
     next_page = request.args.get("next")
     if not (vtoken := User.verify_magic_token(token)):
+        log_event(
+            "login_failed",
+            provider="magic_link",
+            result="failure",
+            metadata={"reason": "invalid_or_expired_token"},
+        )
         flash("Token is invalid", "warning")
         return redirect(url_for("auth.get_login"))
     if not (user := User.query.get(vtoken.get("user_id"))):
@@ -119,7 +144,18 @@ def validate_magic_link(token):
         flash("Welcome")
         Logs.add(message=f"{user.email} logged in via magic link", user_id=user.id)
         custom_login(user)
+        log_event(
+            "login_success", email=user.email, provider="magic_link", tenant=tenant.id
+        )
         return redirect(next_page or url_for("main.home"))
+    log_event(
+        "login_failed",
+        email=user.email,
+        provider="magic_link",
+        result="failure",
+        tenant=tenant.id,
+        metadata={"reason": "not_a_tenant_member"},
+    )
     flash("User can not access tenant", "warning")
     return redirect(url_for("auth.get_login"))
 
@@ -181,8 +217,15 @@ def reset_password_request():
     if request.method == "POST":
         email = request.form.get("email")
         if not (user := User.find_by_email(email)):
+            log_event(
+                "password_reset_requested",
+                email=email,
+                result="failure",
+                metadata={"reason": "account_not_found"},
+            )
             flash("Email sent, check your mail")
             return redirect(next_page or url_for("auth.reset_password_request"))
+        log_event("password_reset_requested", email=user.email)
         Logs.add(
             message=f"{email} requested a password reset",
             level="warning",
@@ -219,10 +262,14 @@ def reset_password(token):
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
     if not (user := User.verify_auth_token(token)):
+        log_event(
+            "password_reset_failed",
+            result="failure",
+            metadata={"reason": "invalid_or_expired_token"},
+        )
         Logs.add(
             message="invalid or missing token for password reset",
             level="warning",
-            user_id=user.id,
         )
         flash("Missing or invalid token", "warning")
         return redirect(url_for("auth.reset_password_request"))
@@ -234,6 +281,7 @@ def reset_password(token):
             return redirect(url_for("auth.reset_password", token=token))
         user.set_password(password, set_pwd_change=True)
         db.session.commit()
+        log_event("password_reset_completed", email=user.email)
         flash("Password reset! Please login with your new password", "success")
         Logs.add(
             message=f"{user.email} reset their password",

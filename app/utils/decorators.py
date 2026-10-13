@@ -2,6 +2,7 @@ from functools import wraps
 from flask import request, jsonify, redirect, url_for, flash
 from app.models import *
 from flask_login import current_user, login_user, logout_user
+from app.utils.audit import log_event
 
 
 def custom_login(user):
@@ -53,6 +54,11 @@ def login_required(view_function):
         # Try to authenticate with a token (API login, must have token in HTTP header)
         if token := request.headers.get("token"):
             if not (user := validate_token_in_header(token)):
+                log_event(
+                    "api_auth_failed",
+                    result="failure",
+                    metadata={"reason": "invalid_token", "req": f"{request.method} {request.path}"},
+                )
                 return jsonify({"message": "Invalid authentication"}), 401
             custom_login(user)
         else:
@@ -60,6 +66,12 @@ def login_required(view_function):
                 return redirect(url_for("auth.get_login", next=request.full_path))
 
             if not current_user.is_active:
+                log_event(
+                    "login_blocked",
+                    email=current_user.email,
+                    result="failure",
+                    metadata={"reason": "account_disabled"},
+                )
                 logout_user()
                 flash("User account is disabled", "warning")
                 return redirect(url_for("auth.get_login"))
