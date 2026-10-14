@@ -228,6 +228,8 @@ def create_risk(id):
         risk=data.get("risk"),
         priority=data.get("priority"),
         vendor_id=data.get("vendor_id"),
+        likelihood=data.get("likelihood"),
+        impact=data.get("impact"),
     )
 
     db.session.add(risk)

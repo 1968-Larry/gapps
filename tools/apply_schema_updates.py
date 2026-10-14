@@ -19,6 +19,8 @@ from app.models import db, RiskAssociation
 NEW_COLUMNS = [
     ("project_subcontrols", "ticket_number", "VARCHAR"),
     ("project_evidence", "link", "VARCHAR"),
+    ("risk_register", "likelihood", "INTEGER"),
+    ("risk_register", "impact", "INTEGER"),
 ]
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")

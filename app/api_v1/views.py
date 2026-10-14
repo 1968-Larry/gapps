@@ -533,6 +533,8 @@ def create_risk_for_project(pid):
         risk=data.get("risk"),
         priority=data.get("priority"),
         assignee=data.get("assignee"),
+        likelihood=data.get("likelihood"),
+        impact=data.get("impact"),
     )
     return jsonify(risk.as_dict())
 
@@ -574,6 +576,10 @@ def update_risk_for_project(pid, rid):
     risk.description = data.get("description")
     risk.status = data.get("status")
     risk.risk = data.get("risk")
+    if "likelihood" in data:
+        risk.likelihood = data.get("likelihood")
+    if "impact" in data:
+        risk.impact = data.get("impact")
     risk.priority = data.get("priority")
     db.session.commit()
     return jsonify(risk.as_dict())

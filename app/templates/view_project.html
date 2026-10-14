@@ -840,7 +840,7 @@
 												<th></th>
 												<td x-text="item.title"></td>
 												<td>
-													<span :class="{'bg-primary': item.risk==='unknown', 'bg-info': item.risk==='low', 'bg-warning': item.risk==='moderate', 'bg-error': item.risk==='high' || item.risk==='critical'}" class="pill" x-text="item.risk"></span>
+													<span :class="{'bg-primary': item.risk==='unknown', 'bg-success': item.risk==='very low', 'bg-warning': item.risk==='low' || item.risk==='moderate', 'bg-error': item.risk==='high' || item.risk==='very high' || item.risk==='critical'}" class="pill" x-text="item.risk"></span>
 												</td>
 												<td>
 													<span :class="{'bg-primary': item.status==='new', 'bg-warning': item.status==='in_progress', 'bg-success': item.status==='mitigated', 'bg-success opacity-80': item.status==='accepted'}" class="pill" x-text="item.status"></span>
@@ -1027,11 +1027,12 @@
 										<div class="flex flex-row">
 											<h4 class="subtitle text-sm">Risk Level</h4>
 										</div>
-										<select @change="updateRisk(selectedReport)" x-model="selectedReport.risk" class="select select-sm w-full">
-											<option value="critical" :selected="selectedReport.risk === 'critical'">Critical</option>
+										<select @change="updateRisk(selectedReport)" x-model="selectedReport.risk" :disabled="selectedReport.likelihood && selectedReport.impact" class="select select-sm w-full">
+											<option value="very high" :selected="selectedReport.risk === 'very high'">Very high</option>
 											<option value="high" :selected="selectedReport.risk === 'high'">High</option>
-											<option value="moderate" :selected="selectedReport.risk === 'moderate'">Moderate</option>
 											<option value="low" :selected="selectedReport.risk === 'low'">Low</option>
+											<option value="very low" :selected="selectedReport.risk === 'very low'">Very low</option>
+											<template x-if="['moderate','critical'].includes(selectedReport.risk)"><option :value="selectedReport.risk" selected x-text="selectedReport.risk + ' (old scale)'"></option></template>
 											<option value="unknown" :selected="selectedReport.risk === 'unknown'">Unknown</option>
 
 										</select>
@@ -1047,7 +1048,28 @@
 											</template>
 										</select>
 									</div>
-									<div class="col-span-6">
+									<div class="col-span-3">
+<label class="block text-sm font-medium mb-2">Likelihood</label>
+<select @change="recalcRisk(selectedReport); updateRisk(selectedReport)" x-model.number="selectedReport.likelihood" class="select select-sm w-full">
+<option value="" :selected="!selectedReport.likelihood">Not assessed</option>
+<option value="4" :selected="selectedReport.likelihood == 4">4 - Very high</option>
+<option value="3" :selected="selectedReport.likelihood == 3">3 - High</option>
+<option value="2" :selected="selectedReport.likelihood == 2">2 - Low</option>
+<option value="1" :selected="selectedReport.likelihood == 1">1 - Very low</option>
+</select>
+</div>
+<div class="col-span-3">
+<label class="block text-sm font-medium mb-2">Impact</label>
+<select @change="recalcRisk(selectedReport); updateRisk(selectedReport)" x-model.number="selectedReport.impact" class="select select-sm w-full">
+<option value="" :selected="!selectedReport.impact">Not assessed</option>
+<option value="4" :selected="selectedReport.impact == 4">4 - Very serious</option>
+<option value="3" :selected="selectedReport.impact == 3">3 - Serious</option>
+<option value="2" :selected="selectedReport.impact == 2">2 - Noticeable</option>
+<option value="1" :selected="selectedReport.impact == 1">1 - Small</option>
+</select>
+</div>
+<div class="col-span-6 text-xs opacity-70" x-show="selectedReport.likelihood && selectedReport.impact">Score <span class="font-semibold" x-text="selectedReport.likelihood * selectedReport.impact"></span> (likelihood x impact). Risk level is calculated: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</div>
+<div class="col-span-6">
 										<h4 class="my-2 subtitle text-sm">Risk Description</h4>
 										<textarea rows="4" @change="updateRisk(selectedReport)" x-model="selectedReport.description" :value="selectedReport.description" x-text="selectedReport.description" class="textarea w-full" placeholder="No description as been provided."></textarea>
 									</div>
@@ -2531,11 +2553,11 @@
 								</div>
 								<ul class="text-xs font-medium">
 									<li>
-									  <a :class="{'bg-error opacity-80': filter.risk === 'critical'}"
-										 @click="filterRisk('critical')"
+									  <a :class="{'bg-error opacity-80': filter.risk === 'very high'}"
+										 @click="filterRisk('very high')"
 										 class="flex justify-between w-full text-xs">
-										<span class="text-xs"><i class="ti ti-alert-circle text-error mr-1"></i>Critical</span>
-										<span class="text-xs" x-text="initialCriticalRiskCount"></span>
+										<span class="text-xs"><i class="ti ti-alert-circle text-error mr-1"></i>Very high</span>
+										<span class="text-xs" x-text="initialVeryHighRiskCount"></span>
 									  </a>
 									</li>
 									<li>
@@ -2547,19 +2569,19 @@
 									  </a>
 									</li>
 									<li>
-									  <a :class="{'bg-error opacity-80': filter.risk === 'moderate'}"
-										 @click="filterRisk('moderate')"
-										 class="flex justify-between w-full text-xs">
-										<span class="text-xs"><i class="ti ti-alert-circle text-warning mr-1"></i>Moderate</span>
-										<span class="text-xs" x-text="initialModerateRiskCount"></span>
-									  </a>
-									</li>
-									<li>
 									  <a :class="{'bg-error opacity-80': filter.risk === 'low'}"
 										 @click="filterRisk('low')"
 										 class="flex justify-between w-full text-xs">
-										<span class="text-xs"><i class="ti ti-alert-circle text-success mr-1"></i>Low</span>
+										<span class="text-xs"><i class="ti ti-alert-circle text-warning mr-1"></i>Low</span>
 										<span class="text-xs" x-text="initialLowRiskCount"></span>
+									  </a>
+									</li>
+									<li>
+									  <a :class="{'bg-error opacity-80': filter.risk === 'very low'}"
+										 @click="filterRisk('very low')"
+										 class="flex justify-between w-full text-xs">
+										<span class="text-xs"><i class="ti ti-alert-circle text-success mr-1"></i>Very low</span>
+										<span class="text-xs" x-text="initialVeryLowRiskCount"></span>
 									  </a>
 									</li>
 									<li>
@@ -2709,7 +2731,7 @@
 								</td>
 			
 								<td>
-									<span :class="{'bg-primary': report.risk==='unknown', 'bg-success': report.risk==='low', 'bg-warning': report.risk==='moderate', 'bg-error opacity-80': report.risk==='high', 'bg-error': report.risk==='critical'}" class="p-1 px-2 rounded-lg uppercase text-ss text-white" x-text="report.risk"></span>
+									<span :class="{'bg-primary': report.risk==='unknown', 'bg-success': report.risk==='very low', 'bg-warning': report.risk==='low' || report.risk==='moderate', 'bg-error opacity-80': report.risk==='high', 'bg-error': report.risk==='very high' || report.risk==='critical'}" class="p-1 px-2 rounded-lg uppercase text-ss text-white" x-text="report.risk"></span>
 								</td>
 								  <td>
 									<span class="tooltip text-xs" :data-tip="report.created_at_h" x-text="report.created_at"></span>
@@ -3229,15 +3251,36 @@
 						<textarea x-model="riskPayload.description" class="textarea textarea-sm textarea-bordered w-full" placeholder="Provide a description for the risk"></textarea>
 					</div>
 
-					<div class="col-span-4">
+					<div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Likelihood</label>
+<select @change="recalcRisk(riskPayload)" x-model.number="riskPayload.likelihood" class="select select-sm select-bordered w-full">
+<option value="" :selected="!riskPayload.likelihood">Not assessed</option>
+<option value="4" :selected="riskPayload.likelihood == 4">4 - Very high</option>
+<option value="3" :selected="riskPayload.likelihood == 3">3 - High</option>
+<option value="2" :selected="riskPayload.likelihood == 2">2 - Low</option>
+<option value="1" :selected="riskPayload.likelihood == 1">1 - Very low</option>
+</select>
+</div>
+<div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Impact</label>
+<select @change="recalcRisk(riskPayload)" x-model.number="riskPayload.impact" class="select select-sm select-bordered w-full">
+<option value="" :selected="!riskPayload.impact">Not assessed</option>
+<option value="4" :selected="riskPayload.impact == 4">4 - Very serious</option>
+<option value="3" :selected="riskPayload.impact == 3">3 - Serious</option>
+<option value="2" :selected="riskPayload.impact == 2">2 - Noticeable</option>
+<option value="1" :selected="riskPayload.impact == 1">1 - Small</option>
+</select>
+</div>
+<div class="col-span-12 text-xs opacity-70" x-show="riskPayload.likelihood && riskPayload.impact">Score <span class="font-semibold" x-text="riskPayload.likelihood * riskPayload.impact"></span> (likelihood x impact). Risk level is calculated: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</div>
+<div class="col-span-4">
 						<label class="block text-sm font-medium mb-2">Risk</label>
-						<select x-model="riskPayload.risk" class="select select-sm select-bordered w-full">
+						<select x-model="riskPayload.risk" :disabled="riskPayload.likelihood && riskPayload.impact" class="select select-sm select-bordered w-full">
 						  <option selected>Please select...</option>
 						  <option class="capitalize" value="unknown">unknown</option>
+						  <option class="capitalize" value="very low">very low</option>
 						  <option class="capitalize" value="low">low</option>
-						  <option class="capitalize" value="moderate">moderate</option>
 						  <option class="capitalize" value="high">high</option>
-						  <option class="capitalize" value="critical">critical</option>
+						  <option class="capitalize" value="very high">very high</option>
 						</select>
 					</div>
 					<div class="col-span-4">
@@ -5342,7 +5385,7 @@ function project(){
         },
         openReportDrawer: function(report) {
         	this.selectedReport = report;
-        	if (this.selectedReport.risk === "critical") {
+        	if (this.selectedReport.risk === "critical" || this.selectedReport.risk === "very high") {
         		this.selectedReport.risk_level = 95
         	} else if (this.selectedReport.risk === "high") {
 				this.selectedReport.risk_level = 80
@@ -6342,6 +6385,13 @@ function project(){
 			})
 			this.filteredRisks = filteredRisks
 		},
+		recalcRisk: function(risk) {
+			const l = parseInt(risk.likelihood), i = parseInt(risk.impact)
+			if (l && i) {
+				const s = l * i
+				risk.risk = s <= 2 ? 'very low' : (s <= 6 ? 'low' : (s <= 9 ? 'high' : 'very high'))
+			}
+		},
 		updateRisk: function(risk) {
 			//TODO
 		  data = {
@@ -6350,6 +6400,8 @@ function project(){
 			"status":risk.status,
 			"risk":risk.risk,
 			"priority":risk.priority,
+			"likelihood": risk.likelihood || null,
+			"impact": risk.impact || null,
 			"assignee": risk.assignee || null
 		  }
 		  request("PUT",

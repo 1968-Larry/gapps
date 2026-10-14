@@ -1102,6 +1102,8 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         priority="unknown",
         project_id=None,
         vendor_id=None,
+        likelihood=None,
+        impact=None,
     ):
         risk = RiskRegister(
             title=title,
@@ -1110,6 +1112,8 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
             enabled=enabled,
             status=status,
             risk=risk,
+            likelihood=likelihood,
+            impact=impact,
             priority=priority,
             project_id=project_id,
             vendor_id=vendor_id,
@@ -2649,6 +2653,8 @@ class Project(db.Model, DateMixin):
         priority="unknown",
         risk="unknown",
         assignee=None,
+        likelihood=None,
+        impact=None,
     ):
         risk = RiskRegister(
             title=title,
@@ -2656,6 +2662,8 @@ class Project(db.Model, DateMixin):
             status=status,
             priority=priority,
             risk=risk,
+            likelihood=likelihood,
+            impact=impact,
             assignee=self.validate_risk_assignee(assignee),
             project_id=self.id,
             tenant_id=self.tenant_id,
@@ -3440,6 +3448,9 @@ class RiskRegister(db.Model):
     risk = db.Column(db.String, default="unknown", nullable=False)
     status = db.Column(db.String, default="new", nullable=False)
     priority = db.Column(db.String, default="unknown", nullable=False)
+    # 4x4 assessment: 1-4 each. When both are set, "risk" is calculated from them
+    likelihood = db.Column(db.Integer, nullable=True)
+    impact = db.Column(db.Integer, nullable=True)
     assignee = db.Column(db.String, db.ForeignKey("users.id"))
     tags = db.relationship(
         "Tag",
@@ -3459,12 +3470,55 @@ class RiskRegister(db.Model):
     date_added = db.Column(db.DateTime, default=datetime.utcnow)
     date_updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
 
-    ALLOWED_RISKS = ["unknown", "low", "moderate", "high", "critical"]
+    # "moderate" and "critical" are legacy values from before the 4x4 model
+    ALLOWED_RISKS = [
+        "unknown",
+        "very low",
+        "low",
+        "moderate",
+        "high",
+        "very high",
+        "critical",
+    ]
     ALLOWED_PRIORITY = ["unknown", "low", "moderate", "high"]
     ALLOWED_STATUS = ["new", "in_progress", "accepted", "mitigated"]
 
+    @staticmethod
+    def level_for_score(score):
+        """likelihood x impact -> risk level (4x4 matrix)"""
+        if score <= 2:
+            return "very low"
+        if score <= 6:
+            return "low"
+        if score <= 9:
+            return "high"
+        return "very high"
+
+    def score(self):
+        if self.likelihood and self.impact:
+            return self.likelihood * self.impact
+        return None
+
+    def recalculate_risk(self):
+        score = self.score()
+        if score is not None:
+            self.risk = self.level_for_score(score)
+
+    @validates("likelihood", "impact")
+    def _validate_scale(self, key, value):
+        if value in (None, ""):
+            return None
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid {key}: {value}")
+        if value < 1 or value > 4:
+            raise ValueError(f"Invalid {key}: {value} (must be 1-4)")
+        return value
+
     def as_dict(self):
         data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        data["score"] = self.score()
         data["scope"] = "tenant"
         parsed_date = arrow.get(self.date_added)
         data["created_at"] = parsed_date.format("MMM D, YYYY")
@@ -3523,6 +3577,8 @@ class RiskRegister(db.Model):
             "remediation": str,
             "status": str,
             "risk": str,
+            "likelihood": int,
+            "impact": int,
             "priority": str,
             "assignee": str,
             "owner_id": str,
@@ -3540,6 +3596,12 @@ class RiskRegister(db.Model):
                 setattr(self, field, value)
         db.session.commit()
         return self
+
+
+@listens_for(RiskRegister, "before_insert")
+@listens_for(RiskRegister, "before_update")
+def _calculate_risk_level(mapper, connection, target):
+    target.recalculate_risk()
 
 
 class ProjectSubControl(db.Model, SubControlMixin):
