@@ -2718,18 +2718,7 @@
 										<a :href="report.links[0].url" :title="report.links[0].project + ' / ' + report.links[0].ref_code + ' ' + report.links[0].name" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i>1</a>
 									</template>
 									<template x-if="report.links && report.links.length>1">
-										<div class="relative inline-block text-left" x-data="{open:false}" @click.outside="open=false">
-											<button @click="open=!open" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
-											<div x-show="open" x-cloak class="absolute z-20 mt-1 w-80 max-h-64 overflow-y-auto bg-base-100 border border-base-300 rounded-box shadow-lg p-2 text-xs">
-												<template x-for="link in report.links" :key="link.id">
-													<a :href="link.url" class="block px-2 py-1 rounded hover:bg-base-200">
-														<span class="opacity-70" x-text="link.project"></span>
-														<span class="font-semibold" x-text="link.ref_code"></span>
-														<span x-text="link.name"></span>
-													</a>
-												</template>
-											</div>
-										</div>
+										<button @click="openReportDrawer(report); changeTabInDrawer('links')" title="Show where this risk is linked" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
 									</template>
 								</td>
 								<td>
