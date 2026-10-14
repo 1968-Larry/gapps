@@ -155,6 +155,10 @@
 </div>
 <div class="col-span-6 text-xs opacity-70" x-show="selectedReport.likelihood && selectedReport.impact">Score <span class="font-semibold" x-text="selectedReport.likelihood * selectedReport.impact"></span> (likelihood x impact). Risk level is calculated: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</div>
 <div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Ticket number</label>
+<input type="text" x-model="selectedReport.ticket_number" @change="updateRisk(selectedReport)" placeholder="e.g. a ticket id in your ticket system" class="input input-sm input-bordered w-full" />
+</div>
+<div class="col-span-6">
 										<h4 class="my-2 subtitle text-sm">Risk Description</h4>
 										<textarea rows="4" @change="updateRisk(selectedReport)" x-model="selectedReport.description" :value="selectedReport.description" x-text="selectedReport.description" class="textarea w-full" placeholder="No description as been provided."></textarea>
 									</div>
@@ -618,6 +622,10 @@
                         </select>
                     </div>
                     <div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Ticket number</label>
+<input type="text" x-model="payload.ticket_number" placeholder="Optional ticket id" class="input input-sm input-bordered w-full" />
+</div>
+<div class="col-span-6">
 <label class="block text-sm font-medium mb-2">Likelihood</label>
 <select @change="recalcRisk(payload)" x-model.number="payload.likelihood" class="select select-sm select-bordered w-full">
 <option value="" :selected="!payload.likelihood">Not assessed</option>
@@ -1253,7 +1261,7 @@ function risks(){
             // Create payload with only allowed fields that are being updated
             const allowedFields = [
                 'title', 'description', 'remediation', 'status', 
-                'risk', 'likelihood', 'impact', 'priority', 'assignee', 'owner_id', 'enabled'
+                'risk', 'likelihood', 'impact', 'ticket_number', 'priority', 'assignee', 'owner_id', 'enabled'
             ];
             
             const payload = {};

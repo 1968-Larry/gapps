@@ -1104,10 +1104,12 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         vendor_id=None,
         likelihood=None,
         impact=None,
+        ticket_number=None,
     ):
         risk = RiskRegister(
             title=title,
             description=description,
+            ticket_number=(ticket_number or "").strip() or None,
             remediation=remediation,
             enabled=enabled,
             status=status,
@@ -2655,10 +2657,12 @@ class Project(db.Model, DateMixin):
         assignee=None,
         likelihood=None,
         impact=None,
+        ticket_number=None,
     ):
         risk = RiskRegister(
             title=title,
             description=description,
+            ticket_number=(ticket_number or "").strip() or None,
             status=status,
             priority=priority,
             risk=risk,
@@ -3451,6 +3455,7 @@ class RiskRegister(db.Model):
     # 4x4 assessment: 1-4 each. When both are set, "risk" is calculated from them
     likelihood = db.Column(db.Integer, nullable=True)
     impact = db.Column(db.Integer, nullable=True)
+    ticket_number = db.Column(db.String, nullable=True)
     assignee = db.Column(db.String, db.ForeignKey("users.id"))
     tags = db.relationship(
         "Tag",
@@ -3579,6 +3584,7 @@ class RiskRegister(db.Model):
             "risk": str,
             "likelihood": int,
             "impact": int,
+            "ticket_number": str,
             "priority": str,
             "assignee": str,
             "owner_id": str,

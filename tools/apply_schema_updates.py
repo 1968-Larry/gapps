@@ -21,6 +21,7 @@ NEW_COLUMNS = [
     ("project_evidence", "link", "VARCHAR"),
     ("risk_register", "likelihood", "INTEGER"),
     ("risk_register", "impact", "INTEGER"),
+    ("risk_register", "ticket_number", "VARCHAR"),
 ]
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")
