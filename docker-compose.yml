@@ -5,6 +5,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Proxy for apt/pip during the build. A Dockerfile cannot see the host
+      # environment, so compose forwards it: first .env / the shell
+      # (HTTP_PROXY), then the lowercase variant (http_proxy, as set in
+      # /etc/environment). Empty = no proxy. These are Docker's predefined proxy
+      # build args, so they are not stored in the image layers or history.
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-${http_proxy:-}}
+        HTTPS_PROXY: ${HTTPS_PROXY:-${https_proxy:-}}
+        NO_PROXY: ${NO_PROXY:-${no_proxy:-}}
+        http_proxy: ${HTTP_PROXY:-${http_proxy:-}}
+        https_proxy: ${HTTPS_PROXY:-${https_proxy:-}}
+        no_proxy: ${NO_PROXY:-${no_proxy:-}}
     depends_on:
       - postgres
     networks:
