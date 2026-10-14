@@ -30,6 +30,10 @@ class ControlMixin(object):
         data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
         for field in parent_fields:
             data[field] = getattr(self.control, field)
+        # controls created before is_custom was set live in the "custom" framework
+        data["is_custom"] = bool(
+            data["is_custom"] or self.control.framework.name.lower() == "custom"
+        )
 
         return {**self.generate_stats(), **data}
 

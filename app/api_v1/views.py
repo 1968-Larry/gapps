@@ -1291,6 +1291,17 @@ def create_project_tag(pid):
     return jsonify(tag.as_dict())
 
 
+@api.route(
+    "/projects/<string:pid>/controls/<string:cid>/subcontrols", methods=["POST"]
+)
+@login_required
+def create_project_subcontrol(pid, cid):
+    result = Authorizer(current_user).can_user_manage_project(pid)
+    data = request.get_json()
+    subcontrol = result["extra"]["project"].add_custom_subcontrol(cid, data)
+    return jsonify(subcontrol.as_dict())
+
+
 @api.route("/projects/<string:pid>/controls", methods=["POST"])
 @login_required
 def create_project_control(pid):

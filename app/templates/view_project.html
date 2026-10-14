@@ -424,6 +424,9 @@
 					</div>
 					</div>
 					<div x-show="activeSideTab==='subcontrols'" class="card">
+					  <div x-show="selectedControl && selectedControl.is_custom" class="flex justify-end mb-2">
+						<button @click="showCreateSubControlModal=true" class="btn btn-xs btn-primary"><i class="ti ti-plus"></i>Add subcontrol</button>
+					  </div>
 					  <div role="alert" class="alert bg-base-300 mb-2">
 						  <i class="ti ti-alert-triangle text-xs"></i>
 						  <p class="text-xs">Open each subcontrol to update the implementation, attach evidence, add comments (etc). When all subcontrols are complete, the control is complete.</p>
@@ -4115,6 +4118,32 @@
 			</div>
 		</div>
 	</div>
+	<div x-show="showCreateSubControlModal" class="modal modal-open">
+		<div class="modal-box">
+			<h3 class="font-bold text-lg mb-4">Add Subcontrol</h3>
+			<p class="text-xs mb-2" x-show="selectedControl" x-text="'Under: ' + (selectedControl ? selectedControl.name : '')"></p>
+			<div class="form-control">
+				<label class="label"><span class="label-text">Title of the subcontrol</span></label>
+				<input type="text" x-model="subControlForm.name" class="input input-sm input-bordered w-full">
+			</div>
+			<div class="form-control">
+				<label class="label"><span class="label-text">Reference code (optional)</span></label>
+				<input type="text" x-model="subControlForm.ref_code" placeholder="Generated if empty" class="input input-sm input-bordered w-full">
+			</div>
+			<div class="form-control">
+				<label class="label"><span class="label-text">Description</span></label>
+				<textarea x-model="subControlForm.description" class="textarea textarea-bordered w-full"></textarea>
+			</div>
+			<div class="form-control">
+				<label class="label"><span class="label-text">Implementation Guidance</span></label>
+				<textarea x-model="subControlForm.guidance" class="textarea textarea-bordered w-full"></textarea>
+			</div>
+			<div class="modal-action">
+				<button @click="showCreateSubControlModal = false" class="btn">Cancel</button>
+				<button :class="{'btn-disabled': !subControlForm.name || subControlForm.name.trim().length === 0}" @click="createSubControl" class="btn btn-primary">Add</button>
+			</div>
+		</div>
+	</div>
 	<!-- ===================== ADD INTEGRATION MODAL ===================== -->
 	<dialog id="add-integration-modal" class="modal">
 		<div class="modal-box w-11/12 max-w-6xl">
@@ -4498,6 +4527,8 @@ function project(){
 		rowsSelected: [],
 		showRemovePolicyModal: false,
 		showCreateCustomControlModal: false,
+		showCreateSubControlModal: false,
+		subControlForm: {name: "", ref_code: "", description: "", guidance: ""},
 		customControlName: "",
 		customControlDescription: "",
 		customControlGuidance: "",
@@ -7508,6 +7539,24 @@ function project(){
 			},
 			data
 		  );
+		},
+		createSubControl: function() {
+			if (!this.selectedControl || !this.subControlForm.name) {
+				return
+			}
+			request("POST",
+				`/api/v1/projects/${this.projectId}/controls/${this.selectedControl.id}/subcontrols`,
+				data => {
+					toast("Added subcontrol")
+					this.showCreateSubControlModal = false
+					this.subControlForm = {name: "", ref_code: "", description: "", guidance: ""}
+					this.getControls(useCache=false)
+				},
+				error => {
+					toast(error.message, "error");
+				},
+				this.subControlForm
+			);
 		},
 		createCustomControl: function() {
 			var data = {

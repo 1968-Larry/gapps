@@ -2430,8 +2430,51 @@ class Project(db.Model, DateMixin):
         if not control:
             abort(400, "Failed to create control")
         # Control.create returns a list of controls
+        control[0].is_custom = True
         project_control = self.add_control(control[0])
         return project_control
+
+    def add_custom_subcontrol(self, project_control_id, data):
+        """
+        Add a subcontrol under a custom control of this project.
+
+        Only controls in the "custom" framework are allowed: framework controls are
+        shared definitions and must not change underneath other projects.
+
+        data = {"name": ..., "description": ..., "guidance": ..., "mitigation": ..., "ref_code": ...}
+        """
+        if not isinstance(data, dict) or not (data.get("name") or "").strip():
+            abort(400, "A subcontrol needs a name")
+        project_control = self.controls.filter(
+            ProjectControl.id == project_control_id
+        ).first()
+        if not project_control:
+            abort(404, "control not found")
+        control = project_control.control
+        if not (control.is_custom or control.framework.name.lower() == "custom"):
+            abort(400, "Subcontrols can only be added to custom controls")
+
+        ref_code = (data.get("ref_code") or "").strip()
+        if not ref_code:
+            ref_code = f"{control.ref_code}.{control.subcontrols.count() + 1}"
+        subcontrol = SubControl(
+            name=data["name"].strip(),
+            description=data.get("description")
+            or "The description has not been documented",
+            ref_code=ref_code,
+            mitigation=data.get("mitigation")
+            or "The mitigation has not been documented",
+            guidance=data.get("guidance"),
+            meta={},
+            tasks=[],
+        )
+        control.subcontrols.append(subcontrol)
+        project_subcontrol = ProjectSubControl(
+            subcontrol=subcontrol, project_id=self.id
+        )
+        project_control.subcontrols.append(project_subcontrol)
+        db.session.commit()
+        return project_subcontrol
 
     def ready_for_completion_update(self):
         if not self.last_completion_update:
