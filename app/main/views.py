@@ -30,6 +30,12 @@ def download_report(pid, filename):
 def frameworks():
     return render_template("frameworks.html")
 
+@main.route("/gaps", methods=["GET"])
+@login_required
+def gaps():
+    return render_template("gaps.html")
+
+
 @main.route("/violations", methods=["GET"])
 @login_required
 def violations():

@@ -177,7 +177,7 @@
                 </svg>
               </span>
             </a>
-            {% set more_links = [{'label':'tenant users','link':'/users'}] %}
+            {% set more_links = [{'label':'tenant users','link':'/users'},{'label':'gaps','link':'/gaps'}] %}
             {%for link in more_links%}
             <div arial-label="More" class="mt-2 space-y-2 px-7" role="menu" x-show="open">
               <a href="{{link["link"]}}" :class="{ 'lg:hidden': !isSidebarOpen }" class="block p-2 text-sm transition-colors duration-200 rounded-md capitalize hover:bg-base-100">{{link["label"]}}</a>

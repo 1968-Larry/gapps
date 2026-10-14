@@ -1,0 +1,205 @@
+{% extends "layouts/sidebar-nav.html" %}
+
+{%block page_header_title%}Gaps{%endblock%}
+{%block page_header_title_border%}{%endblock%}
+{%block page_header_buttons%}{%endblock%}
+{%block tenant_btn%}{%endblock%}
+
+{%block content%}
+<div x-data="gaps()" x-cloak class="grid grid-cols-6 gap-4 mt-2">
+	<div class="col-span-6">
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<div class="flex justify-between items-center">
+					<div>
+						<h2 class="card-title">Gaps across projects</h2>
+						<p class="text-sm opacity-70">Subcontrols grouped over all projects you can open. The same subcontrol in several projects is one row, so common gaps end up at the top.</p>
+					</div>
+					<div class="space-x-2 flex">
+						<button class="btn btn-sm capitalize tooltip" @click="exportCSV" data-tip="CSV Export" :disabled="!groups.length"><i class="ti ti-download"></i></button>
+						<button class="btn btn-sm capitalize tooltip" @click="load" data-tip="Refresh"><i class="ti ti-refresh"></i></button>
+					</div>
+				</div>
+
+				<div class="flex flex-row flex-wrap gap-2 mt-4">
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Subcontrol status</span>
+						<select x-model="filter.status" @change="load" class="select select-sm select-bordered">
+							<option value="not_complete">Not complete (not fully implemented or no evidence)</option>
+							<option value="not_implemented">Not implemented</option>
+							<option value="partially_implemented">Partially implemented</option>
+							<option value="missing_evidence">Missing evidence</option>
+							<option value="implemented">Fully implemented</option>
+							<option value="not_applicable">Not applicable</option>
+							<option value="all">All</option>
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Framework</span>
+						<select x-model="filter.framework" @change="load" class="select select-sm select-bordered">
+							<option value="">All frameworks</option>
+							<template x-for="fw in frameworks" :key="fw.id">
+								<option :value="fw.id" x-text="fw.name"></option>
+							</template>
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Found in</span>
+						<select x-model.number="filter.min_projects" @change="load" class="select select-sm select-bordered">
+							<option value="1">Any number of projects</option>
+							<option value="2">At least 2 projects</option>
+							<option value="3">At least 3 projects</option>
+							<option value="5">At least 5 projects</option>
+						</select>
+					</label>
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Search</span>
+						<input type="text" x-model="filter.q" @input.debounce.400ms="load" placeholder="Ref code or name" class="input input-sm input-bordered" />
+					</label>
+				</div>
+
+				<div class="flex flex-row flex-wrap gap-2 mt-4 text-xs" x-show="!loading">
+					<span class="badge badge-outline" x-text="projectCount + ' projects'"></span>
+					<span class="badge badge-outline" x-text="totals.subcontrols + ' subcontrols'"></span>
+					<span class="badge bg-error text-white border-0" x-text="totals.not_implemented + ' not implemented'"></span>
+					<span class="badge bg-warning text-white border-0" x-text="totals.partially_implemented + ' partially'"></span>
+					<span class="badge bg-warning text-white border-0" x-text="totals.missing_evidence + ' missing evidence'"></span>
+					<span class="badge bg-success text-white border-0" x-text="totals.implemented + ' fully implemented'"></span>
+					<span class="badge badge-outline" x-text="totals.not_applicable + ' not applicable'"></span>
+				</div>
+
+				<div class="mx-auto text-center mt-5" x-show="loading"><span class="loading loading-dots loading-lg"></span></div>
+
+				<div x-show="!loading && !groups.length" class="text-center py-12 opacity-70">
+					<i class="ti ti-circle-check text-4xl text-success"></i>
+					<p class="mt-2">No subcontrols match this filter.</p>
+				</div>
+
+				<div x-show="!loading && groups.length" class="overflow-x-auto mt-2">
+					<table class="table">
+						<thead>
+							<tr>
+								<th class="bg-base-200 w-1"></th>
+								<th class="bg-base-200">Ref</th>
+								<th class="bg-base-200">Subcontrol</th>
+								<th class="bg-base-200">Framework</th>
+								<th class="bg-base-200 text-center">Matching</th>
+								<th class="bg-base-200 text-center">Of projects</th>
+								<th class="bg-base-200">Status in projects</th>
+							</tr>
+						</thead>
+						<template x-for="group in groups" :key="group.id">
+								<tbody>
+									<tr class="hover:cursor-pointer hover" @click="toggle(group.id)">
+										<td><i class="ti" :class="open[group.id] ? 'ti-chevron-down' : 'ti-chevron-right'"></i></td>
+										<td class="whitespace-nowrap font-mono text-xs" x-text="group.ref_code"></td>
+										<td>
+											<div class="font-medium" x-text="group.name"></div>
+											<div class="text-xs opacity-60" x-text="group.control"></div>
+										</td>
+										<td class="text-xs" x-text="group.framework"></td>
+										<td class="text-center"><span class="badge bg-error text-white border-0" x-text="group.gaps"></span></td>
+										<td class="text-center" x-text="group.projects"></td>
+										<td class="text-xs whitespace-nowrap">
+											<span class="text-error" x-show="group.not_implemented" x-text="group.not_implemented + ' not impl.'"></span>
+											<span class="text-warning ml-1" x-show="group.partially_implemented" x-text="group.partially_implemented + ' partial'"></span>
+											<span class="text-warning ml-1" x-show="group.missing_evidence" x-text="group.missing_evidence + ' no evidence'"></span>
+											<span class="text-success ml-1" x-show="group.implemented" x-text="group.implemented + ' done'"></span>
+										</td>
+									</tr>
+									<tr x-show="open[group.id]">
+										<td></td>
+										<td colspan="6" class="bg-base-200 rounded-lg">
+											<table class="table table-sm">
+												<thead>
+													<tr><th>Project</th><th>Status</th><th>Evidence</th><th>Open risks</th><th>Owner</th><th>Ticket</th><th></th></tr>
+												</thead>
+												<tbody>
+													<template x-for="item in group.items" :key="item.id">
+														<tr>
+															<td x-text="item.project"></td>
+															<td>
+																<span :class="{'bg-error': item.implementation==='not_implemented', 'bg-warning': item.implementation==='partially_implemented', 'bg-success': item.implementation==='implemented', 'bg-primary': item.implementation==='not_applicable'}" class="p-1 px-2 rounded-lg uppercase text-ss text-white" x-text="label(item.implementation) + (item.implementation==='partially_implemented' ? ' ' + item.implemented + '%' : '')"></span>
+															</td>
+															<td><i class="ti" :class="item.has_evidence ? 'ti-check text-success' : 'ti-x text-error'"></i></td>
+															<td x-text="item.open_risks || '-'"></td>
+															<td class="text-xs" x-text="item.owner || '-'"></td>
+															<td class="text-xs" x-text="item.ticket_number || '-'"></td>
+															<td><a :href="item.url" class="btn btn-xs btn-ghost border border-base-300" title="Open project"><i class="ti ti-arrow-right"></i></a></td>
+														</tr>
+													</template>
+												</tbody>
+											</table>
+										</td>
+									</tr>
+								</tbody>
+						</template>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+{%endblock%}
+
+{%block extrajs%}
+<script>
+function gaps() {
+	return {
+		init() {
+			this.load()
+		},
+		loading: true,
+		groups: [],
+		frameworks: [],
+		totals: {subcontrols: 0, not_implemented: 0, partially_implemented: 0, missing_evidence: 0, implemented: 0, not_applicable: 0},
+		projectCount: 0,
+		open: {},
+		filter: {status: "not_complete", framework: "", min_projects: 1, q: ""},
+		labels: {not_implemented: "Not implemented", partially_implemented: "Partial", implemented: "Implemented", not_applicable: "N/A"},
+		label: function(key) {
+			return this.labels[key] || key
+		},
+		toggle: function(id) {
+			this.open = {...this.open, [id]: !this.open[id]}
+		},
+		load: function() {
+			this.loading = true
+			const params = new URLSearchParams({status: this.filter.status, min_projects: this.filter.min_projects || 1})
+			if (this.filter.framework) params.set("framework", this.filter.framework)
+			if (this.filter.q) params.set("q", this.filter.q)
+			request("GET",
+				`/api/v1/tenants/${this.$store.currentUser.selectedTenant.id}/gaps?${params.toString()}`,
+				data => {
+					this.groups = data.groups
+					// keep the framework list stable while a framework filter is active
+					if (!this.filter.framework || !this.frameworks.length) this.frameworks = data.frameworks
+					this.totals = Object.assign(this.totals, data.totals)
+					this.projectCount = data.projects || 0
+					this.loading = false
+				},
+				error => {
+					this.loading = false
+					toast(error.message, "error")
+				}
+			)
+		},
+		exportCSV: function() {
+			const esc = v => '"' + String(v === null || v === undefined ? "" : v).replace(/"/g, '""') + '"'
+			const lines = [["Framework", "Ref code", "Subcontrol", "Project", "Status", "Implemented %", "Evidence", "Open risks", "Owner", "Ticket"].map(esc).join(",")]
+			this.groups.forEach(g => {
+				g.items.forEach(i => {
+					lines.push([g.framework, g.ref_code, g.name, i.project, this.label(i.implementation), i.implemented, i.has_evidence ? "yes" : "no", i.open_risks, i.owner, i.ticket_number].map(esc).join(","))
+				})
+			})
+			const blob = new Blob([lines.join("\n")], {type: "text/csv;charset=utf-8;"})
+			const a = document.createElement("a")
+			a.href = URL.createObjectURL(blob)
+			a.download = "gaps.csv"
+			a.click()
+			URL.revokeObjectURL(a.href)
+		}
+	}
+}
+</script>
+{%endblock%}
