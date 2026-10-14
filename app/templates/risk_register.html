@@ -34,6 +34,7 @@
 							<div class="flex flex-col">
 								<span class="subtitle text-xs !mb-0" x-text="'Report Title - '+selectedReport.id"></span>
 								<span class="text-xl" x-text="selectedReport.title"></span>
+								<span class="text-xs opacity-70" x-text="selectedReport.project ? 'Project: ' + selectedReport.project : 'Organisation level risk'"></span>
 							</div>
 							<div class="flex flex-row gap-x-2">
 
@@ -439,7 +440,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
             <div class="flex flex-row gap-x-4">
 				<button @click="search=''" x-show="search.length>0" class="btn btn-xs btn-ghost border border-base-300 my-auto"><i class="ti ti-x text-error"></i></button>
 				<label x-show="tableSelected" class="input input-sm input-bordered flex items-center gap-2">
-				  <input type="text" class="grow text-sm" x-model="search" @input="filterReports()" placeholder="Search by Title" />
+				  <input type="text" class="grow text-sm" x-model="search" @input="filterReports()" placeholder="Search by title or project" />
 				  <svg
 					xmlns="http://www.w3.org/2000/svg"
 					viewBox="0 0 16 16"
@@ -515,6 +516,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
                 </th>
                 <th class="p-4 bg-base-200">Status</th>
                 <th class="p-4 bg-base-200">Title</th>
+                <th class="p-4 bg-base-200">Project</th>
                 <th class="p-4 bg-base-200">Description</th>
                 <th class="p-4 bg-base-200">Risk</th>
 			  	<th class="p-4 bg-base-200">Created</th>
@@ -539,6 +541,10 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						<div class="flex flex-row">
 							<span x-text="report.title"></span>
 						</div>
+					</td>
+					<td class="text-xs">
+						<span x-show="report.project" x-text="report.project"></span>
+						<span x-show="!report.project" class="opacity-50">Organisation</span>
 					</td>
 					<td>
 						<div
@@ -977,7 +983,7 @@ function risks(){
 
 			  // Search filter (case-insensitive)
 			  const searchMatch = this.search
-				? report.title.toLowerCase().includes(this.search.toLowerCase())
+				? (report.title + " " + (report.project || "")).toLowerCase().includes(this.search.toLowerCase())
 				: true;
 
 			  // Date filter (e.g., "Apr 2, 2025")
