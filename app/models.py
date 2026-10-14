@@ -1105,11 +1105,15 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
         likelihood=None,
         impact=None,
         ticket_number=None,
+        review_date=None,
+        due_date=None,
     ):
         risk = RiskRegister(
             title=title,
             description=description,
             ticket_number=(ticket_number or "").strip() or None,
+            review_date=review_date,
+            due_date=due_date,
             remediation=remediation,
             enabled=enabled,
             status=status,
@@ -2658,11 +2662,15 @@ class Project(db.Model, DateMixin):
         likelihood=None,
         impact=None,
         ticket_number=None,
+        review_date=None,
+        due_date=None,
     ):
         risk = RiskRegister(
             title=title,
             description=description,
             ticket_number=(ticket_number or "").strip() or None,
+            review_date=review_date,
+            due_date=due_date,
             status=status,
             priority=priority,
             risk=risk,
@@ -3456,6 +3464,13 @@ class RiskRegister(db.Model):
     likelihood = db.Column(db.Integer, nullable=True)
     impact = db.Column(db.Integer, nullable=True)
     ticket_number = db.Column(db.String, nullable=True)
+    # review_date: next reassessment (suggested from RISK_REVIEW_INTERVALS),
+    # due_date: planned completion of the treatment,
+    # closed_date: set automatically when status becomes mitigated/accepted
+    review_date = db.Column(db.Date, nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+    closed_date = db.Column(db.Date, nullable=True)
+    last_reviewed = db.Column(db.Date, nullable=True)
     assignee = db.Column(db.String, db.ForeignKey("users.id"))
     tags = db.relationship(
         "Tag",
@@ -3465,6 +3480,12 @@ class RiskRegister(db.Model):
     )
     comments = db.relationship(
         "RiskComment",
+        backref="risk",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    history = db.relationship(
+        "RiskHistory",
         backref="risk",
         lazy="dynamic",
         cascade="all, delete-orphan",
@@ -3509,6 +3530,19 @@ class RiskRegister(db.Model):
         if score is not None:
             self.risk = self.level_for_score(score)
 
+    @validates("review_date", "due_date")
+    def _validate_date(self, key, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if hasattr(value, "isoformat"):
+            return value
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"Invalid {key}: {value} (use YYYY-MM-DD)")
+
     @validates("likelihood", "impact")
     def _validate_scale(self, key, value):
         if value in (None, ""):
@@ -3521,8 +3555,111 @@ class RiskRegister(db.Model):
             raise ValueError(f"Invalid {key}: {value} (must be 1-4)")
         return value
 
+    CLOSED_STATUSES = ("mitigated", "accepted")
+    # fields whose changes are written to the history
+    TRACKED_FIELDS = (
+        "likelihood",
+        "impact",
+        "risk",
+        "status",
+        "priority",
+        "assignee",
+        "review_date",
+        "due_date",
+    )
+    DEFAULT_REVIEW_INTERVALS = "very high=3,high=6,low=12,very low=12"
+    DATE_FIELDS = ("review_date", "due_date", "closed_date", "last_reviewed")
+
+    @staticmethod
+    def review_intervals():
+        """RISK_REVIEW_INTERVALS ("very high=3,high=6,...", months) -> {level: months}"""
+        raw = None
+        try:
+            raw = current_app.config.get("RISK_REVIEW_INTERVALS")
+        except RuntimeError:
+            pass
+        if raw is None:
+            raw = RiskRegister.DEFAULT_REVIEW_INTERVALS
+        intervals = {}
+        for item in str(raw).split(","):
+            if "=" not in item:
+                continue
+            level, months = item.split("=", 1)
+            try:
+                months = int(months.strip())
+            except ValueError:
+                continue
+            if months > 0:
+                intervals[level.strip().lower()] = months
+        return intervals
+
+    @staticmethod
+    def next_review_date(level, start=None):
+        """Standard rhythm: today + the configured months for the risk level (or None)."""
+        months = RiskRegister.review_intervals().get((level or "").lower())
+        if not months:
+            return None
+        start = start or datetime.utcnow().date()
+        return arrow.get(start).shift(months=months).date()
+
+    def apply_closed_date(self):
+        if self.status in self.CLOSED_STATUSES:
+            if not self.closed_date:
+                self.closed_date = datetime.utcnow().date()
+        else:
+            self.closed_date = None
+
+    @staticmethod
+    def _plain(value):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value
+
+    def snapshot(self):
+        return {f: self._plain(getattr(self, f)) for f in self.TRACKED_FIELDS}
+
+    def mark_reviewed(self, note=None):
+        """Record that the risk has been reassessed and schedule the next review."""
+        today = datetime.utcnow().date()
+        old_review = self.review_date
+        self.last_reviewed = today
+        new_review = self.next_review_date(self.risk, today)
+        if new_review:
+            self.review_date = new_review
+        user_id, user_email = _history_actor()
+        self._skip_history = True  # explicit entry below
+        db.session.add(
+            RiskHistory(
+                risk_id=self.id,
+                event="reviewed",
+                note=(note or "").strip() or None,
+                changes={
+                    "review_date": [
+                        self._plain(old_review),
+                        self._plain(self.review_date),
+                    ]
+                },
+                snapshot=self.snapshot(),
+                user_id=user_id,
+                user_email=user_email,
+            )
+        )
+        db.session.commit()
+        self._skip_history = False
+        return self
+
     def as_dict(self):
         data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        today = datetime.utcnow().date()
+        closed = self.status in self.CLOSED_STATUSES
+        for field in self.DATE_FIELDS:
+            data[field] = self._plain(data[field])
+        data["review_overdue"] = bool(
+            self.review_date and self.review_date < today and not closed
+        )
+        data["due_overdue"] = bool(
+            self.due_date and self.due_date < today and not closed
+        )
         data["score"] = self.score()
         data["scope"] = "tenant"
         parsed_date = arrow.get(self.date_added)
@@ -3585,6 +3722,8 @@ class RiskRegister(db.Model):
             "likelihood": int,
             "impact": int,
             "ticket_number": str,
+            "review_date": str,
+            "due_date": str,
             "priority": str,
             "assignee": str,
             "owner_id": str,
@@ -3604,10 +3743,108 @@ class RiskRegister(db.Model):
         return self
 
 
+def _history_actor():
+    """(user id, email) of the signed-in user, or (None, None) outside a request."""
+    try:
+        from flask_login import current_user
+
+        if current_user and current_user.is_authenticated:
+            return current_user.id, current_user.email
+    except Exception:
+        pass
+    return None, None
+
+
+class RiskHistory(db.Model):
+    """One entry per change of a risk assessment (who, when, what changed)."""
+
+    __tablename__ = "risk_history"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    risk_id = db.Column(
+        db.String,
+        db.ForeignKey("risk_register.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event = db.Column(db.String, nullable=False, default="updated")
+    changes = db.Column(db.JSON, default={})
+    snapshot = db.Column(db.JSON, default={})
+    note = db.Column(db.String)
+    user_id = db.Column(db.String)
+    user_email = db.Column(db.String)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def as_dict(self):
+        data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        data["date_added"] = (
+            self.date_added.strftime("%Y-%m-%d %H:%M") if self.date_added else None
+        )
+        return data
+
+
+def _write_history(connection, target, event, changes):
+    user_id, user_email = _history_actor()
+    connection.execute(
+        RiskHistory.__table__.insert().values(
+            id=str(shortuuid.ShortUUID().random(length=8)).lower(),
+            risk_id=target.id,
+            event=event,
+            changes=changes,
+            snapshot=target.snapshot(),
+            user_id=user_id,
+            user_email=user_email,
+            date_added=datetime.utcnow(),
+        )
+    )
+
+
 @listens_for(RiskRegister, "before_insert")
-@listens_for(RiskRegister, "before_update")
-def _calculate_risk_level(mapper, connection, target):
+def _risk_before_insert(mapper, connection, target):
     target.recalculate_risk()
+    if target.review_date is None:
+        target.review_date = RiskRegister.next_review_date(target.risk)
+    target.apply_closed_date()
+
+
+@listens_for(RiskRegister, "after_insert")
+def _risk_after_insert(mapper, connection, target):
+    try:
+        _write_history(connection, target, "created", target.snapshot())
+    except Exception:
+        logging.getLogger(__name__).debug("risk history (insert) failed", exc_info=True)
+
+
+@listens_for(RiskRegister, "before_update")
+def _risk_before_update(mapper, connection, target):
+    target.recalculate_risk()
+    target.apply_closed_date()
+    if getattr(target, "_skip_history", False):
+        target._skip_history = False
+        return
+    from sqlalchemy import inspect as sa_inspect
+
+    state = sa_inspect(target)
+    changes = {}
+    for field in RiskRegister.TRACKED_FIELDS:
+        hist = state.attrs[field].history
+        if not hist.has_changes():
+            continue
+        old = hist.deleted[0] if hist.deleted else None
+        new = getattr(target, field)
+        if RiskRegister._plain(old) != RiskRegister._plain(new):
+            changes[field] = [RiskRegister._plain(old), RiskRegister._plain(new)]
+    if changes:
+        try:
+            _write_history(connection, target, "updated", changes)
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "risk history (update) failed", exc_info=True
+            )
 
 
 class ProjectSubControl(db.Model, SubControlMixin):

@@ -536,6 +536,8 @@ def create_risk_for_project(pid):
         likelihood=data.get("likelihood"),
         impact=data.get("impact"),
         ticket_number=data.get("ticket_number"),
+        review_date=data.get("review_date"),
+        due_date=data.get("due_date"),
     )
     return jsonify(risk.as_dict())
 
@@ -583,6 +585,10 @@ def update_risk_for_project(pid, rid):
         risk.impact = data.get("impact")
     if "ticket_number" in data:
         risk.ticket_number = (data.get("ticket_number") or "").strip() or None
+    if "review_date" in data:
+        risk.review_date = data.get("review_date")
+    if "due_date" in data:
+        risk.due_date = data.get("due_date")
     risk.priority = data.get("priority")
     db.session.commit()
     return jsonify(risk.as_dict())
@@ -1231,6 +1237,24 @@ def get_links_for_evidence(eid):
     result = Authorizer(current_user).can_user_read_evidence(eid)
     evidence = result["extra"]["evidence"]
     return jsonify(_visible_links(evidence.get_controls()))
+
+
+@api.route("/risks/<string:id>/history", methods=["GET"])
+@login_required
+def get_history_for_risk(id):
+    result = Authorizer(current_user).can_user_read_risk(id)
+    risk = result["extra"]["risk"]
+    entries = risk.history.order_by(models.RiskHistory.date_added.desc()).limit(500)
+    return jsonify([entry.as_dict() for entry in entries])
+
+
+@api.route("/risks/<string:id>/review", methods=["POST"])
+@login_required
+def review_risk(id):
+    result = Authorizer(current_user).can_user_manage_risk(id)
+    data = request.get_json(silent=True) or {}
+    risk = result["extra"]["risk"].mark_reviewed(note=data.get("note"))
+    return jsonify(risk.as_dict())
 
 
 @api.route("/risks/<string:id>/comments", methods=["POST"])

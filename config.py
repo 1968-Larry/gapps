@@ -105,6 +105,12 @@ class Config:
     AUDIT_GUI_ENABLED = os.environ.get("AUDIT_GUI_ENABLED", "true").lower() == "true"
     AUDIT_GUI_EVENTS = os.environ.get("AUDIT_GUI_EVENTS")
     AUDIT_GUI_RETENTION_DAYS = int(os.environ.get("AUDIT_GUI_RETENTION_DAYS", 90))
+    # Standard risk review rhythm in months per risk level ("level=months,...").
+    # A new risk gets its next review date from this. A level that is left out
+    # (or 0) gets no automatic date.
+    RISK_REVIEW_INTERVALS = os.environ.get(
+        "RISK_REVIEW_INTERVALS", "very high=3,high=6,low=12,very low=12"
+    )
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )

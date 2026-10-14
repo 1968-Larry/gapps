@@ -13,7 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import inspect, text
 from app import create_app
-from app.models import db, RiskAssociation
+from app.models import db, RiskAssociation, RiskHistory
 
 # (table, column, SQL type)
 NEW_COLUMNS = [
@@ -22,6 +22,10 @@ NEW_COLUMNS = [
     ("risk_register", "likelihood", "INTEGER"),
     ("risk_register", "impact", "INTEGER"),
     ("risk_register", "ticket_number", "VARCHAR"),
+    ("risk_register", "review_date", "DATE"),
+    ("risk_register", "due_date", "DATE"),
+    ("risk_register", "closed_date", "DATE"),
+    ("risk_register", "last_reviewed", "DATE"),
 ]
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")
@@ -39,6 +43,10 @@ with app.app_context():
         if "risk_association" not in tables:
             RiskAssociation.__table__.create(bind=db.engine, checkfirst=True)
             print("[INFO] Schema updates: created table risk_association")
+
+        if "risk_history" not in tables:
+            RiskHistory.__table__.create(bind=db.engine, checkfirst=True)
+            print("[INFO] Schema updates: created table risk_history")
 
         for table, column, coltype in NEW_COLUMNS:
             existing = [c["name"] for c in inspector.get_columns(table)]

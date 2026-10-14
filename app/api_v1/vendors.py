@@ -231,6 +231,8 @@ def create_risk(id):
         likelihood=data.get("likelihood"),
         impact=data.get("impact"),
         ticket_number=data.get("ticket_number"),
+        review_date=data.get("review_date"),
+        due_date=data.get("due_date"),
     )
 
     db.session.add(risk)

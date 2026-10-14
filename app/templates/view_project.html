@@ -990,6 +990,7 @@
 					  <button @click="changeTabInDrawer('overview')" :class="{'btn-active': activeReportTab==='overview'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeReportTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Comments ('+riskMessages.length+')'"></button>
 					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+riskLinks.length+')'"></button>
+					  <button @click="changeTabInDrawer('history'); getHistory(selectedReport)" :class="{'btn-active': activeReportTab==='history'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">History</button>
 					</div>
 					</div>
 				</div>
@@ -1069,6 +1070,22 @@
 </select>
 </div>
 <div class="col-span-6 text-xs opacity-70" x-show="selectedReport.likelihood && selectedReport.impact">Score <span class="font-semibold" x-text="selectedReport.likelihood * selectedReport.impact"></span> (likelihood x impact). Risk level is calculated: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</div>
+<div class="col-span-3">
+<label class="block text-sm font-medium mb-2">Next review<i x-show="selectedReport.review_overdue" class="ti ti-alert-triangle text-error ml-1" title="Review overdue"></i></label>
+<input type="date" x-model="selectedReport.review_date" @change="updateRisk(selectedReport)" class="input input-sm input-bordered w-full" />
+</div>
+<div class="col-span-3">
+<label class="block text-sm font-medium mb-2">Due date<i x-show="selectedReport.due_overdue" class="ti ti-alert-triangle text-error ml-1" title="Overdue"></i></label>
+<input type="date" x-model="selectedReport.due_date" @change="updateRisk(selectedReport)" class="input input-sm input-bordered w-full" />
+</div>
+<div class="col-span-6 text-xs opacity-80">
+Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
+<span x-show="selectedReport.closed_date"> &middot; Completed: <span x-text="selectedReport.closed_date"></span></span>
+</div>
+<div class="col-span-6 flex gap-2">
+<input type="text" x-model="reviewNote" placeholder="Review note (optional)" class="input input-sm input-bordered flex-1" />
+<button @click="markReviewed(selectedReport)" class="btn btn-sm btn-primary"><i class="ti ti-calendar-check"></i>Mark as reviewed</button>
+</div>
 <div class="col-span-6">
 <label class="block text-sm font-medium mb-2">Ticket number</label>
 <input type="text" x-model="selectedReport.ticket_number" @change="updateRisk(selectedReport)" placeholder="e.g. a ticket id in your ticket system" class="input input-sm input-bordered w-full" />
@@ -1114,7 +1131,31 @@
 						</table>
 					</div>
 
-					<div x-show="activeReportTab==='comments'" class="flex-1 overflow-y-auto">
+					<div x-show="activeReportTab==='history'" class="card">
+	<div x-show="historyLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+	<div x-show="!historyLoading && history.length===0" class="text-center py-10">
+		<h1 class="text-lg font-semibold">No history yet</h1>
+		<p class="text-sm opacity-70 mt-2">Changes to the assessment, status and dates are recorded here.</p>
+	</div>
+	<table x-show="!historyLoading && history.length>0" class="table table-sm">
+		<thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+		<tbody>
+			<template x-for="entry in history" :key="entry.id">
+				<tr>
+					<td class="whitespace-nowrap text-xs" x-text="entry.date_added"></td>
+					<td class="text-xs" x-text="entry.user_email || '-'"></td>
+					<td class="text-xs">
+						<span class="badge badge-sm mr-1" x-show="entry.event==='reviewed'">Reviewed</span>
+						<template x-for="line in describeChange(entry)"><div x-text="line"></div></template>
+						<div x-show="entry.note" class="italic opacity-70" x-text="entry.note"></div>
+					</td>
+				</tr>
+			</template>
+		</tbody>
+	</table>
+</div>
+
+<div x-show="activeReportTab==='comments'" class="flex-1 overflow-y-auto">
 						<div x-show="riskMessages.length===0" class="flex-grow hero-content text-center">
 							<div class="max-w-md">
 							  <h1 class="text-2xl font-semibold mt-10">No Comments</h1>
@@ -2688,7 +2729,8 @@
 							<th class="p-4 bg-base-200">Description</th>
 							<th class="p-4 bg-base-200">Risk</th>
 							  <th class="p-4 bg-base-200">Created</th>
-							<th class="p-4 bg-base-200">Linked</th>
+							<th class="p-4 bg-base-200">Next review</th>
+                <th class="p-4 bg-base-200">Linked</th>
 							<th class="p-4 bg-base-200 rounded-tr-lg w-1">Open</th>
 			
 						  </tr>
@@ -2740,7 +2782,11 @@
 								  <td>
 									<span class="tooltip text-xs" :data-tip="report.created_at_h" x-text="report.created_at"></span>
 								</td>
-								<td>
+								<td class="whitespace-nowrap">
+                        <span class="text-xs" :class="{'text-error font-semibold': report.review_overdue}" x-text="report.review_date || '-'"></span>
+                        <i x-show="report.review_overdue" class="ti ti-alert-triangle text-error text-xs" title="Review overdue"></i>
+                    </td>
+                    <td>
 									<template x-if="!report.links || report.links.length===0">
 										<span class="text-xs opacity-50">-</span>
 									</template>
@@ -3258,6 +3304,15 @@
 					<div class="col-span-6">
 <label class="block text-sm font-medium mb-2">Ticket number</label>
 <input type="text" x-model="riskPayload.ticket_number" placeholder="Optional ticket id" class="input input-sm input-bordered w-full" />
+</div>
+<div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Next review</label>
+<input type="date" x-model="riskPayload.review_date" class="input input-sm input-bordered w-full" />
+<p class="text-xs opacity-70 mt-1">Empty = standard rhythm for the risk level</p>
+</div>
+<div class="col-span-6">
+<label class="block text-sm font-medium mb-2">Due date</label>
+<input type="date" x-model="riskPayload.due_date" class="input input-sm input-bordered w-full" />
 </div>
 <div class="col-span-6">
 <label class="block text-sm font-medium mb-2">Likelihood</label>
@@ -4662,6 +4717,9 @@ function project(){
 		riskMessages: [],
 		riskLinks: [],
 		riskLinksLoading: false,
+		history: [],
+		historyLoading: false,
+		reviewNote: "",
 		messagesForControl: [],
 		tenantPolicies: [],
 		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "users", "integrations", "report", "settings"],
@@ -5408,6 +5466,59 @@ function project(){
 			this.getRiskLinks(report)
 			document.getElementById('report-drawer').checked = true;
         },		
+		getHistory: function(report) {
+			this.history = []
+			this.historyLoading = true
+			request("GET",
+				`/api/v1/risks/${report.id}/history`,
+				data => {
+					if (this.selectedReport && this.selectedReport.id === report.id) {
+						this.history = data
+					}
+					this.historyLoading = false
+				},
+				error => {
+					this.historyLoading = false
+					toast(error.message, "error");
+				}
+			);
+		},
+		describeChange: function(entry) {
+			const labels = {likelihood: "Likelihood", impact: "Impact", risk: "Risk level", status: "Status", priority: "Priority", assignee: "Assignee", review_date: "Next review", due_date: "Due date"}
+			const show = (field, v) => {
+				if (v === null || v === undefined || v === "") return "-"
+				if (field === "assignee") {
+					const u = (this.projectUsers || []).find(x => x.id === v)
+					return u ? u.email : v
+				}
+				return v
+			}
+			if (entry.event === "created") {
+				return ["Created (risk level: " + show("risk", (entry.snapshot || {}).risk) + ")"]
+			}
+			return Object.entries(entry.changes || {}).map(([field, v]) =>
+				(labels[field] || field) + ": " + show(field, v[0]) + " -> " + show(field, v[1]))
+		},
+		markReviewed: function(report) {
+			request("POST",
+				`/api/v1/risks/${report.id}/review`,
+				data => {
+					toast("Risk marked as reviewed")
+					this.reviewNote = ""
+					Object.assign(report, {
+						review_date: data.review_date,
+						last_reviewed: data.last_reviewed,
+						review_overdue: data.review_overdue
+					})
+					this.getHistory(report)
+					this.getRisks()
+				},
+				error => {
+					toast(error.message, "error");
+				},
+				{"note": this.reviewNote}
+			);
+		},
 		getRiskLinks: function(report) {
 			this.riskLinks = []
 			this.riskLinksLoading = true
@@ -6411,6 +6522,8 @@ function project(){
 			"likelihood": risk.likelihood || null,
 			"impact": risk.impact || null,
 			"ticket_number": risk.ticket_number || null,
+			"review_date": risk.review_date || null,
+			"due_date": risk.due_date || null,
 			"assignee": risk.assignee || null
 		  }
 		  request("PUT",
