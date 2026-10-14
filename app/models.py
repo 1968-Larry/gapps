@@ -3821,14 +3821,23 @@ def _risk_after_insert(mapper, connection, target):
 
 @listens_for(RiskRegister, "before_update")
 def _risk_before_update(mapper, connection, target):
+    from sqlalchemy import inspect as sa_inspect
+
     target.recalculate_risk()
     target.apply_closed_date()
+    state = sa_inspect(target)
+    # A new risk level also moves the next review forward in time when the standard
+    # rhythm for that level is shorter than the date that is set (never later).
+    if (
+        state.attrs["risk"].history.has_changes()
+        and not state.attrs["review_date"].history.has_changes()
+    ):
+        suggested = RiskRegister.next_review_date(target.risk)
+        if suggested and (target.review_date is None or target.review_date > suggested):
+            target.review_date = suggested
     if getattr(target, "_skip_history", False):
         target._skip_history = False
         return
-    from sqlalchemy import inspect as sa_inspect
-
-    state = sa_inspect(target)
     changes = {}
     for field in RiskRegister.TRACKED_FIELDS:
         hist = state.attrs[field].history

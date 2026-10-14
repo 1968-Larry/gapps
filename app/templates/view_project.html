@@ -1028,7 +1028,7 @@
 										<div class="flex flex-row">
 											<h4 class="subtitle text-sm">Risk Level</h4>
 										</div>
-										<select @change="updateRisk(selectedReport)" x-model="selectedReport.risk" :disabled="selectedReport.likelihood && selectedReport.impact" class="select select-sm w-full">
+										<select @change="applySuggestion(selectedReport, true); updateRisk(selectedReport)" x-model="selectedReport.risk" :disabled="selectedReport.likelihood && selectedReport.impact" class="select select-sm w-full">
 											<option value="very high" :selected="selectedReport.risk === 'very high'">Very high</option>
 											<option value="high" :selected="selectedReport.risk === 'high'">High</option>
 											<option value="low" :selected="selectedReport.risk === 'low'">Low</option>
@@ -3307,7 +3307,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 </div>
 <div class="col-span-6">
 <label class="block text-sm font-medium mb-2">Next review</label>
-<input type="date" x-model="riskPayload.review_date" class="input input-sm input-bordered w-full" />
+<input type="date" x-model="riskPayload.review_date" @input="riskPayload._reviewAuto = false" class="input input-sm input-bordered w-full" />
 <p class="text-xs opacity-70 mt-1">Empty = standard rhythm for the risk level</p>
 </div>
 <div class="col-span-6">
@@ -3337,7 +3337,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 <div class="col-span-12 text-xs opacity-70" x-show="riskPayload.likelihood && riskPayload.impact">Score <span class="font-semibold" x-text="riskPayload.likelihood * riskPayload.impact"></span> (likelihood x impact). Risk level is calculated: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</div>
 <div class="col-span-4">
 						<label class="block text-sm font-medium mb-2">Risk</label>
-						<select x-model="riskPayload.risk" :disabled="riskPayload.likelihood && riskPayload.impact" class="select select-sm select-bordered w-full">
+						<select @change="applySuggestion(riskPayload, false)" x-model="riskPayload.risk" :disabled="riskPayload.likelihood && riskPayload.impact" class="select select-sm select-bordered w-full">
 						  <option selected>Please select...</option>
 						  <option class="capitalize" value="unknown">unknown</option>
 						  <option class="capitalize" value="very low">very low</option>
@@ -4645,6 +4645,7 @@ function project(){
 		  this.getControls(useCache=true)
 		  this.getPolicies()
 		  this.getProjectTags()
+		  this.loadRiskSettings()
 		  this.getRisks()
 		  this.getProjectEvidence()
 		  this.loadComments()
@@ -4719,6 +4720,7 @@ function project(){
 		riskLinksLoading: false,
 		history: [],
 		historyLoading: false,
+		reviewIntervals: {},
 		reviewNote: "",
 		messagesForControl: [],
 		tenantPolicies: [],
@@ -6504,12 +6506,42 @@ function project(){
 			})
 			this.filteredRisks = filteredRisks
 		},
+		loadRiskSettings: function() {
+			request("GET", "/api/v1/risk-settings",
+				data => { this.reviewIntervals = data.review_intervals || {} },
+				error => { console.log("Unable to load risk settings") }
+			);
+		},
+		suggestReviewDate: function(level) {
+			const months = (this.reviewIntervals || {})[(level || "").toLowerCase()]
+			if (!months) return ""
+			const d = new Date()
+			const day = d.getDate()
+			d.setDate(1)
+			d.setMonth(d.getMonth() + months)
+			const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+			d.setDate(Math.min(day, last))
+			const pad = n => String(n).padStart(2, "0")
+			return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+		},
+		applySuggestion: function(item, isExisting) {
+			const s = this.suggestReviewDate(item.risk)
+			if (!s) return
+			if (isExisting) {
+				// an existing risk only gets an earlier date, never a later one
+				if (!item.review_date || item.review_date > s) item.review_date = s
+			} else if (!item.review_date || item._reviewAuto) {
+				item.review_date = s
+				item._reviewAuto = true
+			}
+		},
 		recalcRisk: function(risk) {
 			const l = parseInt(risk.likelihood), i = parseInt(risk.impact)
 			if (l && i) {
 				const s = l * i
 				risk.risk = s <= 2 ? 'very low' : (s <= 6 ? 'low' : (s <= 9 ? 'high' : 'very high'))
 			}
+			this.applySuggestion(risk, !!risk.id)
 		},
 		updateRisk: function(risk) {
 			//TODO
@@ -6530,6 +6562,10 @@ function project(){
 			`/api/v1/projects/${this.projectId}/risks/${risk.id}`,
 			data => {
 			  toast("Updated risk")
+			  Object.assign(risk, {
+				risk: data.risk, review_date: data.review_date, review_overdue: data.review_overdue,
+				closed_date: data.closed_date, due_overdue: data.due_overdue
+			  })
 			  return(data)
 			},
 			error => {

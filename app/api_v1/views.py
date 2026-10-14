@@ -1239,6 +1239,12 @@ def get_links_for_evidence(eid):
     return jsonify(_visible_links(evidence.get_controls()))
 
 
+@api.route("/risk-settings", methods=["GET"])
+@login_required
+def get_risk_settings():
+    return jsonify({"review_intervals": models.RiskRegister.review_intervals()})
+
+
 @api.route("/risks/<string:id>/history", methods=["GET"])
 @login_required
 def get_history_for_risk(id):
