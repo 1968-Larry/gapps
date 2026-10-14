@@ -5,6 +5,16 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Proxy for apt/pip during the build. Values come from .env (or the shell);
+      # empty = no proxy. These are Docker's predefined proxy build args, so they
+      # are not stored in the image layers or history.
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        http_proxy: ${HTTP_PROXY:-}
+        https_proxy: ${HTTPS_PROXY:-}
+        no_proxy: ${NO_PROXY:-}
     depends_on:
       - postgres
     networks:
