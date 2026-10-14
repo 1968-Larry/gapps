@@ -301,6 +301,7 @@ DEFAULT_GUI_EVENTS = (
     "user_registered,invite_accepted,"
     "password_changed,password_reset_requested,password_reset_completed,password_reset_failed,"
     "member_roles_changed,project_member_removed,api_token_issued,frameworks_reloaded,"
+    "risk_reminder_sent,risk_reminder_failed,"
     "resource_deleted:Project,resources_deleted:Project,"
     "resource_deleted:ProjectEvidence,resources_deleted:ProjectEvidence,"
     "resource_deleted:RiskRegister,resources_deleted:RiskRegister,"

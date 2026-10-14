@@ -111,6 +111,18 @@ class Config:
     RISK_REVIEW_INTERVALS = os.environ.get(
         "RISK_REVIEW_INTERVALS", "very high=3,high=6,low=12,very low=12"
     )
+    # Risk reminder emails, sent by tools/send_risk_reminders.py (run it daily from cron).
+    # RISK_REMINDER_TO / _CC: comma list of assignee, project_managers, tenant_owner,
+    # risk_managers or fixed email addresses. FALLBACK_TO is used when TO is empty.
+    RISK_REMINDER_DAYS_BEFORE = int(os.environ.get("RISK_REMINDER_DAYS_BEFORE", 7))
+    RISK_REMINDER_OVERDUE_REPEAT_DAYS = int(
+        os.environ.get("RISK_REMINDER_OVERDUE_REPEAT_DAYS", 7)
+    )
+    RISK_REMINDER_TO = os.environ.get("RISK_REMINDER_TO", "assignee")
+    RISK_REMINDER_CC = os.environ.get("RISK_REMINDER_CC", "")
+    RISK_REMINDER_FALLBACK_TO = os.environ.get("RISK_REMINDER_FALLBACK_TO", "risk_managers")
+    # Public address of the app, used for the links in the emails.
+    APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )

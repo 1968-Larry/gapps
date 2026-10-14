@@ -14,13 +14,13 @@ def send_async_email(app, msg):
             current_app.logger.error(f"Failed to send email:{e}")
 
 
-def send_email(subject, recipients, text_body, html_body, async_send=True):
+def send_email(subject, recipients, text_body, html_body, async_send=True, cc=None):
     sender = current_app.config["MAIL_DEFAULT_SENDER"]
     if not sender:
         current_app.logger.warning("MAIL_DEFAULT_SENDER not set - using MAIL_USERNAME")
         sender = current_app.config["MAIL_USERNAME"]
 
-    msg = Message(subject, sender=sender, recipients=recipients)
+    msg = Message(subject, sender=sender, recipients=recipients, cc=cc or [])
     msg.body = text_body
     msg.html = html_body
 

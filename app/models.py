@@ -3490,6 +3490,12 @@ class RiskRegister(db.Model):
         lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    reminders = db.relationship(
+        "RiskReminder",
+        backref="risk",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
     vendor_id = db.Column(db.String, db.ForeignKey("vendors.id"), nullable=True)
     project_id = db.Column(db.String, db.ForeignKey("projects.id"), nullable=True)
     tenant_id = db.Column(db.String, db.ForeignKey("tenants.id"), nullable=False)
@@ -3785,6 +3791,29 @@ class RiskHistory(db.Model):
             self.date_added.strftime("%Y-%m-%d %H:%M") if self.date_added else None
         )
         return data
+
+
+class RiskReminder(db.Model):
+    """A reminder email that was sent for the review date or due date of a risk."""
+
+    __tablename__ = "risk_reminders"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    risk_id = db.Column(
+        db.String,
+        db.ForeignKey("risk_register.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind = db.Column(db.String, nullable=False)  # review | due
+    target_date = db.Column(db.Date, nullable=False)  # the date the reminder was about
+    sent_on = db.Column(db.Date, nullable=False)
+    recipients = db.Column(db.String)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 def _write_history(connection, target, event, changes):
