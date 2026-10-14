@@ -55,3 +55,6 @@ venv
 
 # Temp folder
 tmp
+
+# local server settings
+docker-compose.override.yml
