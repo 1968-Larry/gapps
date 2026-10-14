@@ -100,6 +100,11 @@ class Config:
     AUDIT_LOG_ENABLED = os.environ.get("AUDIT_LOG_ENABLED", "true").lower() == "true"
     AUDIT_LOG_PATH = os.environ.get("AUDIT_LOG_PATH", "/var/log/app/audit.log")
     AUDIT_LOG_RETENTION_DAYS = int(os.environ.get("AUDIT_LOG_RETENTION_DAYS", 90))
+    # Important events are also shown on the GUI Logs page (namespace "audit").
+    # AUDIT_GUI_EVENTS: comma list of "event" or "event:Model"; empty = built-in default.
+    AUDIT_GUI_ENABLED = os.environ.get("AUDIT_GUI_ENABLED", "true").lower() == "true"
+    AUDIT_GUI_EVENTS = os.environ.get("AUDIT_GUI_EVENTS")
+    AUDIT_GUI_RETENTION_DAYS = int(os.environ.get("AUDIT_GUI_RETENTION_DAYS", 90))
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )

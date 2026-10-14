@@ -38,6 +38,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from flask import has_request_context, request
@@ -51,7 +52,16 @@ AUDIT_LOGGER_NAME = "security_audit"
 # don't, to keep lines short.
 _AUTH_EVENT_PREFIXES = ("login", "logout", "user_registered", "invite", "api_auth")
 
-_state = {"models": {}, "enabled": True, "trust_xff": True, "session_hooks": False}
+_state = {
+    "models": {},
+    "enabled": True,
+    "trust_xff": True,
+    "session_hooks": False,
+    "gui": False,
+    "gui_rules": None,
+    "gui_retention_days": 90,
+    "gui_last_prune": 0.0,
+}
 _registered = set()
 
 
@@ -144,9 +154,15 @@ def configure_audit_logger(app):
       AUDIT_LOG_PATH               default /var/log/app/audit.log  (becomes audit-<date>.log)
       AUDIT_LOG_RETENTION_DAYS     default 90, 0 = never delete locally
       AUDIT_TRUST_FORWARDED_FOR    default True - use first X-Forwarded-For hop as client ip
+      AUDIT_GUI_ENABLED            default True - also show important events in the GUI Logs page
+      AUDIT_GUI_EVENTS             comma list overriding DEFAULT_GUI_EVENTS ("event" or "event:Model")
+      AUDIT_GUI_RETENTION_DAYS     default 90, 0 = never prune the GUI copy
     """
     _state["enabled"] = bool(app.config.get("AUDIT_LOG_ENABLED", True))
     _state["trust_xff"] = bool(app.config.get("AUDIT_TRUST_FORWARDED_FOR", True))
+    _state["gui"] = bool(app.config.get("AUDIT_GUI_ENABLED", True))
+    _state["gui_rules"] = _parse_gui_rules(app.config.get("AUDIT_GUI_EVENTS"))
+    _state["gui_retention_days"] = int(app.config.get("AUDIT_GUI_RETENTION_DAYS", 90) or 0)
     if not _state["enabled"]:
         return
 
@@ -267,10 +283,144 @@ def log_event(
                 metadata = dict(metadata)
                 metadata["req"] = "%s %s" % (request.method, request.path)
         payload["metadata"] = _clean(metadata) if isinstance(metadata, dict) else metadata
-        _emit(_clean(payload))
+        payload = _clean(payload)
+        _emit(payload)
+        _to_gui(payload)
     except Exception:
         # logging must never break a request
         logging.getLogger(__name__).debug("audit log_event failed", exc_info=True)
+
+
+# --------------------------------------------------------------------------- #
+# GUI copy - a small, important subset of events is also written to the `logs`
+# table so it shows up on the Logs page. The JSON file stays the complete record;
+# this copy is a convenience and is never allowed to break a request.
+# --------------------------------------------------------------------------- #
+DEFAULT_GUI_EVENTS = (
+    "login_failed,login_blocked,access_denied,api_auth_failed,invite_accept_failed,"
+    "user_registered,invite_accepted,"
+    "password_changed,password_reset_requested,password_reset_completed,password_reset_failed,"
+    "member_roles_changed,project_member_removed,api_token_issued,frameworks_reloaded,"
+    "resource_deleted:Project,resources_deleted:Project,"
+    "resource_deleted:ProjectEvidence,resources_deleted:ProjectEvidence,"
+    "resource_deleted:RiskRegister,resources_deleted:RiskRegister,"
+    "resource_deleted:Tenant,resource_deleted:User,"
+    "resource_deleted:Framework,resource_deleted:Policy"
+)
+
+_WARN_EVENTS = {"access_denied", "login_blocked", "login_failed", "api_auth_failed"}
+
+
+def _parse_gui_rules(value):
+    """-> (set of event names, set of (event, model)) or None when nothing is configured."""
+    raw = value if value not in (None, "") else DEFAULT_GUI_EVENTS
+    names, pairs = set(), set()
+    for item in str(raw).split(","):
+        item = item.strip()
+        if not item:
+            continue
+        if ":" in item:
+            ev, model = item.split(":", 1)
+            pairs.add((ev.strip(), model.strip()))
+        else:
+            names.add(item)
+    return names, pairs
+
+
+def _gui_wanted(payload):
+    rules = _state.get("gui_rules")
+    if not _state.get("gui") or not rules:
+        return False
+    names, pairs = rules
+    event_name = payload.get("event")
+    if event_name in names:
+        return True
+    model = (payload.get("metadata") or {}).get("model")
+    return (event_name, model) in pairs
+
+
+def _gui_message(payload):
+    meta = payload.get("metadata") or {}
+    text = (payload.get("event") or "event").replace("_", " ")
+    actor = payload.get("email")
+    parts = [text]
+    if meta.get("model"):
+        parts.append(str(meta["model"]))
+    if meta.get("count"):
+        parts.append("x%s" % meta["count"])
+    label = meta.get("label") or meta.get("example") or meta.get("target")
+    if label:
+        parts.append("'%s'" % label)
+    for key in ("reason", "roles", "role", "changed"):
+        if meta.get(key):
+            parts.append("%s=%s" % (key, meta[key]))
+    msg = " ".join(parts)
+    if actor:
+        msg += " (by %s)" % actor
+    if payload.get("ip"):
+        msg += " from %s" % payload["ip"]
+    return msg[:500]
+
+
+def _gui_prune(connection, table):
+    """Drop GUI copies older than the retention period (at most once an hour per process)."""
+    days = _state.get("gui_retention_days") or 0
+    now = time.time()
+    if not days or now - _state.get("gui_last_prune", 0.0) < 3600:
+        return
+    _state["gui_last_prune"] = now
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    connection.execute(
+        table.delete().where(table.c.namespace == "audit").where(table.c.date_added < cutoff)
+    )
+
+
+def _to_gui(payload):
+    """Write one row to `logs` on its own connection (independent of the request session)."""
+    try:
+        if not _gui_wanted(payload):
+            return
+        from app import db  # late import: audit.py is imported by app/__init__
+
+        Logs = _state["models"].get("Logs")
+        User = _state["models"].get("User")
+        Tenant = _state["models"].get("Tenant")
+        if Logs is None:
+            return
+        failed = payload.get("result", "success") != "success"
+        level = "WARNING" if failed or payload.get("event") in _WARN_EVENTS else "INFO"
+        meta = {k: v for k, v in payload.items() if k not in ("timestamp",)}
+        meta["time"] = payload.get("timestamp")
+        with db.engine.begin() as conn:
+            # Foreign keys must point at committed rows; otherwise leave them empty.
+            user_id = tenant_id = None
+            if User is not None and payload.get("email"):
+                user_id = conn.execute(
+                    _select([User.__table__.c.id]).where(
+                        User.__table__.c.email == payload["email"]
+                    )
+                ).scalar()
+            if Tenant is not None and payload.get("tenant"):
+                tenant_id = conn.execute(
+                    _select([Tenant.__table__.c.id]).where(
+                        Tenant.__table__.c.id == payload["tenant"]
+                    )
+                ).scalar()
+            conn.execute(
+                Logs.__table__.insert().values(
+                    namespace="audit",
+                    level=level,
+                    action="AUDIT",
+                    message=_gui_message(payload),
+                    success=not failed,
+                    meta=json.loads(json.dumps(meta, default=str)),
+                    user_id=user_id,
+                    tenant_id=tenant_id,
+                )
+            )
+            _gui_prune(conn, Logs.__table__)
+    except Exception:
+        logging.getLogger(__name__).debug("audit GUI copy failed", exc_info=True)
 
 
 # --------------------------------------------------------------------------- #
