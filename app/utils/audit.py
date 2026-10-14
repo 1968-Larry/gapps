@@ -297,7 +297,7 @@ def log_event(
 # this copy is a convenience and is never allowed to break a request.
 # --------------------------------------------------------------------------- #
 DEFAULT_GUI_EVENTS = (
-    "login_failed,login_blocked,access_denied,api_auth_failed,invite_accept_failed,"
+    "login_success,logout,login_failed,login_blocked,access_denied,api_auth_failed,invite_accept_failed,"
     "user_registered,invite_accepted,"
     "password_changed,password_reset_requested,password_reset_completed,password_reset_failed,"
     "member_roles_changed,project_member_removed,api_token_issued,frameworks_reloaded,"
@@ -351,7 +351,7 @@ def _gui_message(payload):
     label = meta.get("label") or meta.get("example") or meta.get("target")
     if label:
         parts.append("'%s'" % label)
-    for key in ("reason", "roles", "role", "changed"):
+    for key in ("provider", "reason", "roles", "role", "changed"):
         if meta.get(key):
             parts.append("%s=%s" % (key, meta[key]))
     msg = " ".join(parts)
