@@ -838,7 +838,7 @@
 											<template x-for="(item, index) in selectedSubControl.risks">
 											  <tr>
 												<th></th>
-												<td x-text="item.title"></td>
+												<td @click="openRiskFromSubControl(item)" class="underline hover:cursor-pointer hover:opacity-75" x-text="item.title"></td>
 												<td>
 													<span :class="{'bg-primary': item.risk==='unknown', 'bg-success': item.risk==='very low', 'bg-warning': item.risk==='low' || item.risk==='moderate', 'bg-error': item.risk==='high' || item.risk==='very high' || item.risk==='critical'}" class="pill" x-text="item.risk"></span>
 												</td>
@@ -847,6 +847,7 @@
 												</td>
 												<td>
 													<div class="flex flex-row gap-x-2">
+														<button @click="openRiskFromSubControl(item)" title="Open risk" class="btn btn-xs"><i class="ti ti-arrow-right"></i></button>
 														<button @click="removeRiskIndex=item.id;showRemoveRiskModal=true" class="btn btn-xs"><i class="ti ti-trash text-error"></i></button>
 													</div>
 												</td>
@@ -1044,7 +1045,7 @@
 										</div>
 										<select @change="updateRisk(selectedReport)" x-model="selectedReport.assignee" class="select select-sm w-full">
 											<option value="" :selected="selectedReport.assignee === 'Missing Assignee'">Missing Assignee</option>
-											<template  x-for="user in projectUsers.filter(u => u.member)" :key="user.id">
+											<template  x-for="user in projectUsers" :key="user.id">
 												<option :value="user.id" x-text="user.email" :selected="selectedReport.assignee === user.id"></option>
 											</template>
 										</select>
@@ -3371,7 +3372,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						<label class="block text-sm font-medium mb-2">Assignee</label>
 						<select x-model="riskPayload.assignee" class="select select-sm select-bordered w-full">
 						  <option value="">No assignee</option>
-						  <template x-for="user in projectUsers.filter(u => u.member)" :key="user.id">
+						  <template x-for="user in projectUsers" :key="user.id">
 							<option :value="user.id" x-text="user.email"></option>
 						  </template>
 						</select>
@@ -5468,6 +5469,11 @@ function project(){
 			this.getRiskLinks(report)
 			document.getElementById('report-drawer').checked = true;
         },		
+		openRiskFromSubControl: function(item) {
+			// the list on a subcontrol only holds a summary; use the full record from the risk list
+			const full = (this.risks || []).find(r => r.id === item.id)
+			this.openReportDrawer(full || item)
+		},
 		getHistory: function(report) {
 			this.history = []
 			this.historyLoading = true

@@ -2643,12 +2643,12 @@ class Project(db.Model, DateMixin):
         return evidence
 
     def validate_risk_assignee(self, assignee_id):
-        """Return a valid assignee id (a project member) or None when empty."""
+        """Return a valid assignee id (a member of the tenant) or None when empty."""
         if not assignee_id:
             return None
         user = User.query.get(assignee_id)
-        if not user or not self.has_member(user):
-            abort(400, "The assignee must be a member of the project")
+        if not user or not self.tenant.has_member(user):
+            abort(400, "The assignee must be a user in this organisation")
         return user.id
 
     def create_risk(
