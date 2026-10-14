@@ -2424,7 +2424,15 @@ class Project(db.Model, DateMixin):
         """
         if not isinstance(control, dict):
             abort(400, "Control must be a dictionary")
-        control["ref_code"] = f"cu-{random.randint(1000, 9999)}"
+        if not (control.get("name") or "").strip():
+            abort(400, "A control needs a name")
+        ref_code = (control.get("ref_code") or "").strip()
+        if ref_code:
+            if Control.find_by_abs_ref_code("custom", ref_code):
+                abort(400, f"A custom control with reference code {ref_code} already exists")
+        else:
+            ref_code = f"cu-{random.randint(1000, 9999)}"
+        control["ref_code"] = ref_code
         data = {"framework": "custom", "controls": [control]}
         control = Control.create(data, tenant_id=self.tenant_id)
         if not control:
@@ -2433,6 +2441,71 @@ class Project(db.Model, DateMixin):
         control[0].is_custom = True
         project_control = self.add_control(control[0])
         return project_control
+
+    @staticmethod
+    def _is_custom_control(control):
+        return bool(control.is_custom or control.framework.name.lower() == "custom")
+
+    def update_custom_control(self, project_control_id, data):
+        """
+        Rename a custom control and/or change its reference code.
+        data = {"name": ..., "ref_code": ...}
+        """
+        if not isinstance(data, dict):
+            abort(400, "Invalid data")
+        project_control = self.controls.filter(
+            ProjectControl.id == project_control_id
+        ).first()
+        if not project_control:
+            abort(404, "control not found")
+        control = project_control.control
+        if not self._is_custom_control(control):
+            abort(400, "Only custom controls can be edited")
+
+        old_name, old_ref = control.name, control.ref_code
+        name = (data.get("name") or "").strip() or old_name
+        ref_code = (data.get("ref_code") or "").strip() or old_ref
+        if ref_code != old_ref:
+            other = Control.find_by_abs_ref_code("custom", ref_code)
+            if other and other.id != control.id:
+                abort(400, f"A custom control with reference code {ref_code} already exists")
+        control.name = name
+        control.ref_code = ref_code
+        control.abs_ref_code = f"{control.framework.name.lower()}__{ref_code}"
+        # the subcontrol that was generated together with the control mirrors it
+        for sub in control.subcontrols.all():
+            if sub.name == old_name and sub.ref_code == old_ref:
+                sub.name = name
+                sub.ref_code = ref_code
+        db.session.commit()
+        return project_control
+
+    def update_custom_subcontrol(self, project_subcontrol_id, data):
+        """
+        Edit name, reference code, description and guidance of a subcontrol
+        that belongs to a custom control.
+        """
+        if not isinstance(data, dict):
+            abort(400, "Invalid data")
+        project_subcontrol = ProjectSubControl.query.filter(
+            ProjectSubControl.id == project_subcontrol_id,
+            ProjectSubControl.project_id == self.id,
+        ).first()
+        if not project_subcontrol:
+            abort(404, "subcontrol not found")
+        subcontrol = project_subcontrol.subcontrol
+        if not self._is_custom_control(subcontrol.control):
+            abort(400, "Only subcontrols of custom controls can be edited")
+        if (data.get("name") or "").strip():
+            subcontrol.name = data["name"].strip()
+        if (data.get("ref_code") or "").strip():
+            subcontrol.ref_code = data["ref_code"].strip()
+        if data.get("description") is not None:
+            subcontrol.description = data["description"]
+        if data.get("guidance") is not None:
+            subcontrol.guidance = data["guidance"]
+        db.session.commit()
+        return project_subcontrol
 
     def add_custom_subcontrol(self, project_control_id, data):
         """

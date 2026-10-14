@@ -1302,6 +1302,28 @@ def create_project_subcontrol(pid, cid):
     return jsonify(subcontrol.as_dict())
 
 
+@api.route(
+    "/projects/<string:pid>/controls/<string:cid>/custom", methods=["PUT"]
+)
+@login_required
+def update_project_custom_control(pid, cid):
+    result = Authorizer(current_user).can_user_manage_project(pid)
+    data = request.get_json()
+    control = result["extra"]["project"].update_custom_control(cid, data)
+    return jsonify(control.as_dict())
+
+
+@api.route(
+    "/projects/<string:pid>/subcontrols/<string:sid>/custom", methods=["PUT"]
+)
+@login_required
+def update_project_custom_subcontrol(pid, sid):
+    result = Authorizer(current_user).can_user_manage_project(pid)
+    data = request.get_json()
+    subcontrol = result["extra"]["project"].update_custom_subcontrol(sid, data)
+    return jsonify(subcontrol.as_dict())
+
+
 @api.route("/projects/<string:pid>/controls", methods=["POST"])
 @login_required
 def create_project_control(pid):
