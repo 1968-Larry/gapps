@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Apply the SQL files in db/migrations (in order) to the PostgreSQL container.
+# Apply the SQL files in db/changes (in order) to the PostgreSQL container.
 #
 #   db/apply.sh <postgres-container> <db-user> <db-name>
 #   db/apply.sh <postgres-container> <db-user> <db-name> db/optional/risk_initial_review_dates.sql
 #
-# With extra file arguments only those files are applied. All migrations are
+# With extra file arguments only those files are applied. All changes are
 # written to be safe to run more than once.
 set -euo pipefail
 
@@ -18,7 +18,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 if [ "$#" -gt 0 ]; then
   files=("$@")
 else
-  files=("$here"/migrations/*.sql)
+  files=("$here"/changes/*.sql)
 fi
 
 for file in "${files[@]}"; do
