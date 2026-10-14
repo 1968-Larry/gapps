@@ -451,6 +451,7 @@
                 <th class="p-4 bg-base-200">Description</th>
                 <th class="p-4 bg-base-200">Risk</th>
 			  	<th class="p-4 bg-base-200">Created</th>
+                <th class="p-4 bg-base-200">Linked</th>
                 <th class="p-4 bg-base-200 rounded-tr-lg w-1">Open</th>
 
               </tr>
@@ -502,6 +503,28 @@
 				  	<td>
 						<span class="tooltip text-xs" :data-tip="report.created_at_h" x-text="report.created_at"></span>
 				    </td>
+                    <td>
+                    	<template x-if="!report.links || report.links.length===0">
+                    		<span class="text-xs opacity-50">-</span>
+                    	</template>
+                    	<template x-if="report.links && report.links.length===1">
+                    		<a :href="report.links[0].url" :title="report.links[0].project + ' / ' + report.links[0].ref_code + ' ' + report.links[0].name" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i>1</a>
+                    	</template>
+                    	<template x-if="report.links && report.links.length>1">
+                    		<div class="relative inline-block text-left" x-data="{open:false}" @click.outside="open=false">
+                    			<button @click="open=!open" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
+                    			<div x-show="open" x-cloak class="absolute z-20 mt-1 w-80 max-h-64 overflow-y-auto bg-base-100 border border-base-300 rounded-box shadow-lg p-2 text-xs">
+                    				<template x-for="link in report.links" :key="link.id">
+                    					<a :href="link.url" class="block px-2 py-1 rounded hover:bg-base-200">
+                    						<span class="opacity-70" x-text="link.project"></span>
+                    						<span class="font-semibold" x-text="link.ref_code"></span>
+                    						<span x-text="link.name"></span>
+                    					</a>
+                    				</template>
+                    			</div>
+                    		</div>
+                    	</template>
+                    </td>
                     <td>
                         <button @click="openDrawer(report)" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-arrow-right text-md"></i></button>
                     </td>

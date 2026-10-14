@@ -1723,6 +1723,34 @@ def subcontrol_link_info(subcontrol):
     }
 
 
+def bulk_risk_links(risk_ids, can_access=None):
+    """
+    {risk_id: [link info, ...]} for many risks with a single association query.
+    `can_access(project)` filters out projects the caller may not open.
+    """
+    result = {}
+    if not risk_ids:
+        return result
+    rows = (
+        db.session.query(RiskAssociation.risk_id, ProjectSubControl)
+        .join(ProjectSubControl, ProjectSubControl.id == RiskAssociation.control_id)
+        .filter(RiskAssociation.risk_id.in_(list(risk_ids)))
+        .all()
+    )
+    allowed = {}
+    for risk_id, subcontrol in rows:
+        project = subcontrol.p_control.project
+        if can_access is not None:
+            if project.id not in allowed:
+                allowed[project.id] = bool(can_access(project))
+            if not allowed[project.id]:
+                continue
+        result.setdefault(risk_id, []).append(subcontrol_link_info(subcontrol))
+    for links in result.values():
+        links.sort(key=lambda x: (x["project"], x["framework"], x["ref_code"] or ""))
+    return result
+
+
 class EvidenceAssociation(db.Model):
     __tablename__ = "evidence_association"
     id = db.Column(

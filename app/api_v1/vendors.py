@@ -161,8 +161,15 @@ def get_assessments_for_tenant(id):
 def get_risks_for_tenant(id):
     result = Authorizer(current_user).can_user_access_tenant(id)
     data = []
-    for risk in RiskRegister.query.filter(RiskRegister.tenant_id == id).all():
-        data.append(risk.as_dict())
+    risks = RiskRegister.query.filter(RiskRegister.tenant_id == id).all()
+    authorizer = Authorizer(current_user)
+    links = bulk_risk_links(
+        [r.id for r in risks], can_access=authorizer._can_user_access_project
+    )
+    for risk in risks:
+        item = risk.as_dict()
+        item["links"] = links.get(risk.id, [])
+        data.append(item)
     return jsonify(data)
 
 

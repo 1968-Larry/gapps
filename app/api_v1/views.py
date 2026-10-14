@@ -541,10 +541,17 @@ def create_risk_for_project(pid):
 def get_risks_for_project(pid):
     result = Authorizer(current_user).can_user_access_project(pid)
     data = []
-    for risk in models.RiskRegister.query.filter(
+    risks = models.RiskRegister.query.filter(
         models.RiskRegister.project_id == pid
-    ).all():
-        data.append(risk.as_dict())
+    ).all()
+    authorizer = Authorizer(current_user)
+    links = models.bulk_risk_links(
+        [r.id for r in risks], can_access=authorizer._can_user_access_project
+    )
+    for risk in risks:
+        item = risk.as_dict()
+        item["links"] = links.get(risk.id, [])
+        data.append(item)
     return jsonify(data)
 
 
