@@ -532,6 +532,7 @@ def create_risk_for_project(pid):
         status=data.get("status"),
         risk=data.get("risk"),
         priority=data.get("priority"),
+        assignee=data.get("assignee"),
     )
     return jsonify(risk.as_dict())
 
@@ -558,13 +559,17 @@ def get_risks_for_project(pid):
 @api.route("/projects/<string:pid>/risks/<string:rid>", methods=["PUT"])
 @login_required
 def update_risk_for_project(pid, rid):
-    Authorizer(current_user).can_user_access_project(pid)
+    result = Authorizer(current_user).can_user_access_project(pid)
     data = request.get_json()
     risk = (
         models.RiskRegister.query.filter(models.RiskRegister.project_id == pid)
         .filter(models.RiskRegister.id == rid)
         .first_or_404()
     )
+    if "assignee" in data:
+        risk.assignee = result["extra"]["project"].validate_risk_assignee(
+            data.get("assignee")
+        )
     risk.title = data.get("title")
     risk.description = data.get("description")
     risk.status = data.get("status")

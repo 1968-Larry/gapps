@@ -447,7 +447,7 @@
 						<tbody class="bg-base-300">
 							<template x-for="subcontrol in selectedControl.subcontrols" :key="subcontrol.id">
 							  <tr>
-								<td>
+								<td class="whitespace-nowrap">
 									<button @click="openSubControlInDrawer(subcontrol)" class="btn btn-sm btn-ghost"><i class="ti ti-maximize text-lg"></i></button>
 									<button x-show="selectedControl && selectedControl.is_custom" @click="openEditCustom('subcontrol', subcontrol)" title="Edit name / reference code" class="btn btn-sm btn-ghost"><i class="ti ti-pencil text-lg"></i></button>
 								</td>
@@ -1042,7 +1042,7 @@
 										</div>
 										<select @change="updateRisk(selectedReport)" x-model="selectedReport.assignee" class="select select-sm w-full">
 											<option value="" :selected="selectedReport.assignee === 'Missing Assignee'">Missing Assignee</option>
-											<template  x-for="user in tenantUsers">
+											<template  x-for="user in projectUsers.filter(u => u.member)" :key="user.id">
 												<option :value="user.id" x-text="user.email" :selected="selectedReport.assignee === user.id"></option>
 											</template>
 										</select>
@@ -3259,6 +3259,15 @@
 						  <option class="capitalize" value="low">low</option>
 						  <option class="capitalize" value="moderate">moderate</option>
 						  <option class="capitalize" value="high">high</option>
+						</select>
+					</div>
+					<div class="col-span-6">
+						<label class="block text-sm font-medium mb-2">Assignee</label>
+						<select x-model="riskPayload.assignee" class="select select-sm select-bordered w-full">
+						  <option value="">No assignee</option>
+						  <template x-for="user in projectUsers.filter(u => u.member)" :key="user.id">
+							<option :value="user.id" x-text="user.email"></option>
+						  </template>
 						</select>
 					</div>
 				</div>
@@ -6340,7 +6349,8 @@ function project(){
 			"description": risk.description,
 			"status":risk.status,
 			"risk":risk.risk,
-			"priority":risk.priority
+			"priority":risk.priority,
+			"assignee": risk.assignee || null
 		  }
 		  request("PUT",
 			`/api/v1/projects/${this.projectId}/risks/${risk.id}`,

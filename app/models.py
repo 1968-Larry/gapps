@@ -2632,8 +2632,23 @@ class Project(db.Model, DateMixin):
             evidence.associate_with_controls(associate_with)
         return evidence
 
+    def validate_risk_assignee(self, assignee_id):
+        """Return a valid assignee id (a project member) or None when empty."""
+        if not assignee_id:
+            return None
+        user = User.query.get(assignee_id)
+        if not user or not self.has_member(user):
+            abort(400, "The assignee must be a member of the project")
+        return user.id
+
     def create_risk(
-        self, title, description, status="new", priority="unknown", risk="unknown"
+        self,
+        title,
+        description,
+        status="new",
+        priority="unknown",
+        risk="unknown",
+        assignee=None,
     ):
         risk = RiskRegister(
             title=title,
@@ -2641,6 +2656,7 @@ class Project(db.Model, DateMixin):
             status=status,
             priority=priority,
             risk=risk,
+            assignee=self.validate_risk_assignee(assignee),
             project_id=self.id,
             tenant_id=self.tenant_id,
         )
