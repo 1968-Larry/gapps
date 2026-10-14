@@ -1,0 +1,42 @@
+# Server specific settings. Copy to docker-compose.override.yml (git-ignored);
+# docker compose merges it with docker-compose.yml automatically, so the
+# tracked compose file never needs local edits.
+#
+# BEFORE switching an existing install to volumes: back up the database
+#   docker compose exec -T postgres pg_dumpall -U db1 > backup.sql
+# A new volume starts empty. Restore with psql after recreating postgres.
+
+# --- Option A: named Docker volumes ---------------------------------------
+services:
+  app:
+    env_file:
+      - .env
+    volumes:
+      - audit_logs:/var/log/app                  # JSON audit log
+      - evidence_files:/app/app/files/evidence   # uploaded evidence
+      - report_files:/app/app/files/reports      # generated reports
+  postgres:
+    volumes:
+      - postgres_data:/data/postgres             # PGDATA is /data/postgres
+
+volumes:
+  postgres_data:
+  audit_logs:
+  evidence_files:
+  report_files:
+
+# --- Option B: plain folders on the host (set DATA_DIR in .env) -------------
+# mkdir -p $DATA_DIR/{postgres,audit,evidence,reports}
+# chown 999:999 $DATA_DIR/postgres      # postgres user inside the container
+#
+# services:
+#   app:
+#     env_file:
+#       - .env
+#     volumes:
+#       - ${DATA_DIR:-./data}/audit:/var/log/app
+#       - ${DATA_DIR:-./data}/evidence:/app/app/files/evidence
+#       - ${DATA_DIR:-./data}/reports:/app/app/files/reports
+#   postgres:
+#     volumes:
+#       - ${DATA_DIR:-./data}/postgres:/data/postgres
