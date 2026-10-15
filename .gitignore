@@ -58,3 +58,6 @@ tmp
 
 # local server settings
 docker-compose.override.yml
+
+# backups contain secrets and data
+backups/
