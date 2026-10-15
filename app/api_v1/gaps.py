@@ -67,7 +67,8 @@ def get_gaps_for_tenant(id):
     gaps shared by many projects are easy to find.
 
     query: status (see GAP_STATUSES, default not_complete), framework (id),
-           min_projects (default 1), q (text in ref code / name)
+           min_projects (default 1), q (text in ref code / name),
+           exclude (comma list of project ids to leave out, default none)
     """
     result = Authorizer(current_user).can_user_access_tenant(id)
     tenant = result["extra"]["tenant"]
@@ -83,14 +84,30 @@ def get_gaps_for_tenant(id):
         min_projects = 1
     text = (request.args.get("q") or "").strip().lower()
 
-    projects = {
+    accessible = {
         p.id: p
         for p in Project.query.filter(Project.tenant_id == tenant.id).all()
         if authorizer._can_user_access_project(p)
     }
+    # every project the user may open, whatever is selected (feeds the picker)
+    project_list = sorted(
+        [{"id": p.id, "name": p.name} for p in accessible.values()],
+        key=lambda x: x["name"].lower(),
+    )
+    projects = accessible
+    excluded = {x for x in (request.args.get("exclude") or "").split(",") if x}
+    if excluded:
+        projects = {pid: p for pid, p in accessible.items() if pid not in excluded}
     if not projects:
         return jsonify(
-            {"groups": [], "frameworks": [], "totals": {}, "status": status_filter}
+            {
+                "groups": [],
+                "frameworks": [],
+                "totals": {},
+                "status": status_filter,
+                "project_list": project_list,
+                "projects": 0,
+            }
         )
     project_ids = list(projects.keys())
 
@@ -213,6 +230,7 @@ def get_gaps_for_tenant(id):
             ),
             "totals": totals,
             "projects": len(projects),
+            "project_list": project_list,
             "status": status_filter,
         }
     )

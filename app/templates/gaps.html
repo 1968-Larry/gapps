@@ -52,6 +52,29 @@
 							<option value="5">At least 5 projects</option>
 						</select>
 					</label>
+					<div class="form-control">
+						<span class="label-text text-xs mb-1">Projects</span>
+						<details class="dropdown" x-ref="projectPicker">
+							<summary class="btn btn-sm btn-outline border-base-300 font-normal min-w-48 justify-between">
+								<span x-text="projectSummary()"></span>
+								<i class="ti ti-chevron-down"></i>
+							</summary>
+							<div class="dropdown-content bg-base-100 rounded-box z-[10] w-72 p-3 shadow border border-base-300">
+								<div class="flex justify-between mb-2 text-xs">
+									<button class="underline" @click="selectAllProjects()">Select all</button>
+									<button class="underline" @click="selectNoProjects()">Clear</button>
+								</div>
+								<div class="max-h-64 overflow-y-auto space-y-1">
+									<template x-for="project in projectList" :key="project.id">
+										<label class="flex items-center gap-2 cursor-pointer text-sm">
+											<input type="checkbox" class="checkbox checkbox-xs" :checked="isSelected(project.id)" @change="toggleProject(project.id)" />
+											<span x-text="project.name"></span>
+										</label>
+									</template>
+								</div>
+							</div>
+						</details>
+					</div>
 					<label class="form-control">
 						<span class="label-text text-xs mb-1">Search</span>
 						<input type="text" x-model="filter.q" @input.debounce.400ms="load" placeholder="Ref code or name" class="input input-sm input-bordered" />
@@ -147,6 +170,7 @@
 function gaps() {
 	return {
 		init() {
+			this.loadExcluded()
 			this.load()
 		},
 		loading: true,
@@ -154,26 +178,85 @@ function gaps() {
 		frameworks: [],
 		totals: {subcontrols: 0, not_implemented: 0, partially_implemented: 0, missing_evidence: 0, implemented: 0, not_applicable: 0},
 		projectCount: 0,
+		projectList: [],
+		excluded: [],
 		open: {},
 		filter: {status: "not_complete", framework: "", min_projects: 1, q: ""},
 		labels: {not_implemented: "Not implemented", partially_implemented: "Partial", implemented: "Implemented", not_applicable: "N/A"},
 		label: function(key) {
 			return this.labels[key] || key
 		},
+		storageKey: function() {
+			return "gaps-excluded-projects-" + this.$store.currentUser.selectedTenant.id
+		},
+		loadExcluded: function() {
+			try {
+				const raw = localStorage.getItem(this.storageKey())
+				this.excluded = raw ? JSON.parse(raw) : []
+			} catch (e) {
+				this.excluded = []
+			}
+		},
+		saveExcluded: function() {
+			try {
+				localStorage.setItem(this.storageKey(), JSON.stringify(this.excluded))
+			} catch (e) {}
+		},
+		selectedIds: function() {
+			return this.projectList.filter(p => !this.excluded.includes(p.id)).map(p => p.id)
+		},
+		isSelected: function(id) {
+			return !this.excluded.includes(id)
+		},
+		projectSummary: function() {
+			const total = this.projectList.length
+			const picked = this.selectedIds().length
+			if (!total) return "All projects"
+			if (picked === total) return "All projects (" + total + ")"
+			if (picked === 0) return "No projects"
+			return picked + " of " + total + " projects"
+		},
+		toggleProject: function(id) {
+			this.excluded = this.excluded.includes(id) ? this.excluded.filter(x => x !== id) : [...this.excluded, id]
+			this.saveExcluded()
+			this.load()
+		},
+		selectAllProjects: function() {
+			this.excluded = []
+			this.saveExcluded()
+			this.load()
+		},
+		selectNoProjects: function() {
+			this.excluded = this.projectList.map(p => p.id)
+			this.saveExcluded()
+			this.load()
+		},
 		toggle: function(id) {
 			this.open = {...this.open, [id]: !this.open[id]}
 		},
 		load: function() {
+			// everything deselected: nothing to show, no need to ask the server
+			if (this.projectList.length && this.selectedIds().length === 0) {
+				this.groups = []
+				this.projectCount = 0
+				Object.keys(this.totals).forEach(k => this.totals[k] = 0)
+				this.loading = false
+				return
+			}
 			this.loading = true
 			const params = new URLSearchParams({status: this.filter.status, min_projects: this.filter.min_projects || 1})
 			if (this.filter.framework) params.set("framework", this.filter.framework)
 			if (this.filter.q) params.set("q", this.filter.q)
+			// send what is left out, so a project added later is included by default
+			if (this.excluded.length) params.set("exclude", this.excluded.join(","))
 			request("GET",
 				`/api/v1/tenants/${this.$store.currentUser.selectedTenant.id}/gaps?${params.toString()}`,
 				data => {
 					this.groups = data.groups
 					// keep the framework list stable while a framework filter is active
 					if (!this.filter.framework || !this.frameworks.length) this.frameworks = data.frameworks
+					this.projectList = data.project_list || this.projectList
+					Object.keys(this.totals).forEach(k => this.totals[k] = 0)
 					this.totals = Object.assign(this.totals, data.totals)
 					this.projectCount = data.projects || 0
 					this.loading = false
