@@ -33,6 +33,7 @@ from app.models import (
     Control,
     EvidenceAssociation,
     Framework,
+    Logs,
     Project,
     RiskAssociation,
     RiskComment,
@@ -139,6 +140,8 @@ def find_tenant(name):
 
 
 def delete_demo(name):
+    from app.utils import audit
+
     tenant = find_tenant(name)
     if not tenant:
         log(f"No tenant named '{name}', nothing to delete")
@@ -150,16 +153,34 @@ def delete_demo(name):
             f"Refusing to delete tenant '{name}': it has members outside @{DEMO_DOMAIN} "
             f"({', '.join(foreign)}). Only demo tenants can be deleted by this script."
         )
+    tenant_id = tenant.id
+    user_ids = [u.id for u in users]
     log(f"Deleting tenant '{name}' with all its data ...")
-    tenant.delete()
-    for user in users:
-        try:
-            if TenantMember.query.filter(TenantMember.user_id == user.id).count() == 0:
-                db.session.delete(user)
-                db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            log(f"[WARNING] Could not delete user {user.email}: {e}")
+
+    # The audit trail writes rows to `logs` (on its own connection) that point at the
+    # tenant and users, which blocks the delete. Pause it and clear the old rows first.
+    saved = (audit._state.get("enabled"), audit._state.get("gui"))
+    audit._state["enabled"] = False
+    audit._state["gui"] = False
+    try:
+        Logs.query.filter(
+            (Logs.tenant_id == tenant_id) | (Logs.user_id.in_(user_ids))
+        ).delete(synchronize_session=False)
+        db.session.commit()
+
+        tenant = Tenant.query.get(tenant_id)
+        tenant.delete()
+        for user in User.query.filter(User.id.in_(user_ids)).all():
+            try:
+                if TenantMember.query.filter(TenantMember.user_id == user.id).count() == 0:
+                    Logs.query.filter(Logs.user_id == user.id).delete(synchronize_session=False)
+                    db.session.delete(user)
+                    db.session.commit()
+            except Exception as e:
+                db.session.rollback()
+                log(f"[WARNING] Could not delete user {user.email}: {e}")
+    finally:
+        audit._state["enabled"], audit._state["gui"] = saved
     log("Deleted")
 
 
