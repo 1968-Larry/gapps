@@ -16,6 +16,43 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Risk Register
 - S3/GCS for file storage
 
+### Added in this fork :wrench:
+**Sign-in and audit**
+- On-prem ADFS sign-in (OIDC) next to Google and Microsoft Entra ID (`ADFS_SERVER`)
+- JSON audit log in daily files with retention, bulk collapsing and whitelisted values only
+- Important audit events, including logins and logouts, are shown on the Logs page
+
+**Risk management**
+- 4x4 assessment: likelihood x impact calculates the risk level (very low, low, high, very high)
+- Next review date, due date and completed date, with a standard review rhythm per risk level
+  (`RISK_REVIEW_INTERVALS`), live date suggestion and a "Mark as reviewed" action
+- Full change history per risk (who changed what and when)
+- Ticket number and owner (any user in the organisation) on risks
+- Risks can be linked to sub-controls, with "Linked to" tabs on risks and evidence
+- The project of every risk is shown in the risk register
+- Daily email reminders to risk owners before review/due dates and when overdue; recipients (To/Cc)
+  and timing are set in `.env` (`tools/send_risk_reminders.py`)
+
+**Controls and evidence**
+- Custom controls and sub-controls: choose the reference code, rename, and add sub-controls
+- Ticket number on sub-controls and a link field on evidence
+- "Reload frameworks" for existing tenants
+
+**Reporting across projects**
+- Gaps page (menu: More > gaps): sub-controls grouped across all projects to show common gaps.
+  Filter on status (not complete, not implemented, partial, missing evidence ...), framework and
+  chosen projects. CSV export
+
+**Deployment and operations**
+- Air-gapped install: CSS/JS served from local vendor assets (`scripts/vendor-assets.sh`)
+- Docker: proxy settings for builds, `.env.example` and `docker-compose.override.yml.example`
+- Schema updater that runs at start, plus idempotent SQL change scripts in `db/`
+- Backup and restore scripts for database, evidence, reports, audit log and configuration
+  (`tools/backup.sh`, `tools/restore.sh`)
+- Demo tenant with 10 projects and example data (`tools/seed_demo.py`)
+
+See [Settings added in this fork](#settings-added-in-this-fork) for the `.env` values.
+
 ### Next big features :snowflake:  
 - Integrations!
 
@@ -165,6 +202,53 @@ The format consists of controls and subcontrols. The snippet below shows an exam
 ```
 
 Next, save the above JSON format into a file (such as `my_framework.json` but it must end with `.json`). The name of your framework will be taken from the filename when Gapps loads it (`my_framework` in this case). Save the file in the `app/files/base_controls/` directory. You can also change the load directory by setting the `FRAMEWORK_FOLDER` env variable. Once your new framework is saved to a file and sitting in the framework directory, you can go ahead and create a new Tenant within the UI. Gapps will load your framework automatically. If you want to add a framework to a existing Tenant, go to the "Tenants" page, edit the Tenant and click the "Reload Frameworks" button.
+
+##### Settings added in this fork
+All settings go in `.env` (see `.env.example` for a complete, commented template).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `ADFS_SERVER` | empty | Host name of an on-prem ADFS (`sts.example.com`). Empty = Microsoft Entra ID. Used with `ENABLE_MICROSOFT_AUTH=true` |
+| `AUDIT_LOG_ENABLED` / `AUDIT_LOG_PATH` / `AUDIT_LOG_RETENTION_DAYS` | `true` / `/var/log/app/audit.log` / `90` | JSON audit log, one file per day |
+| `AUDIT_GUI_ENABLED` / `AUDIT_GUI_RETENTION_DAYS` / `AUDIT_GUI_EVENTS` | `true` / `90` / built-in list | Events that are also shown on the Logs page |
+| `RISK_REVIEW_INTERVALS` | `very high=3,high=6,low=12,very low=12` | Months to the next review per risk level |
+| `RISK_REMINDER_TO` / `RISK_REMINDER_CC` | `assignee` / empty | Who gets the reminder: `assignee`, `project_managers`, `tenant_owner`, `risk_managers` or fixed email addresses (comma list) |
+| `RISK_REMINDER_FALLBACK_TO` | `risk_managers` | Used when the To list is empty for a risk (for example no assignee) |
+| `RISK_REMINDER_DAYS_BEFORE` | `7` | First reminder this many days before the review/due date |
+| `RISK_REMINDER_OVERDUE_REPEAT_DAYS` | `7` | Repeat every N days once overdue, `0` = never |
+| `RISK_REMINDER_EXCLUDE_DOMAINS` | `demo.example.com` | Never send reminders to these domains (protects the demo users) |
+| `APP_BASE_URL` | empty | Public address of the app, used for the links in the reminder mails |
+
+##### Risk reminder emails
+Reminders are sent by a small script that you run once a day from the docker host, for example from cron.
+Try it first with `--dry-run`, which only shows what would be sent:
+```
+docker exec app python3 tools/send_risk_reminders.py --dry-run
+30 7 * * *  docker exec app python3 tools/send_risk_reminders.py
+```
+The normal `MAIL_*` settings are used. A reminder is sent once per risk, date and interval, so running the script
+more often does not send duplicates. The `tools/` folder is part of the image, rebuild it
+(`docker compose build app && docker compose up -d app`) after pulling.
+
+##### Backup and restore
+```
+tools/backup.sh                       # backups/gapps-<date>_<time>/  (database, evidence, reports, audit log, config)
+tools/restore.sh --latest             # restore the newest backup, asks for confirmation first
+```
+Set `BACKUP_PASSPHRASE` to encrypt the configuration (it contains secrets) and `BACKUP_KEEP_DAYS` to control rotation.
+See the header of each script for all options. More in `db/README.md`.
+
+##### Demo tenant with example data
+Creates a tenant called `demo` with fake users (`@demo.example.com`), 10 projects, subcontrol status, evidence and risks:
+```
+docker exec app python3 tools/seed_demo.py --frameworks iso_27001_2022
+docker exec app python3 tools/seed_demo.py --reset --frameworks iso_27001_2022    # delete and recreate
+```
+Only the demo tenant is touched. `--delete` removes it again.
+
+##### Updating the database after pulling new code
+New columns and tables are added by `tools/apply_schema_updates.py`, which runs when the container starts.
+To apply the changes by hand, use the SQL scripts in `db/` (`db/apply.sh`, see `db/README.md`).
 
 ##### Building and pushing
 ```
