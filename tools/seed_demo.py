@@ -299,7 +299,7 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
         status = weighted(rng, {"new": 25, "in_progress": 40, "mitigated": 20, "accepted": 15})
         review, due = pick_review_dates(rng, today, status)
         risk = project.create_risk(
-            title=title,
+            title=f"{title} [{project.name}]",  # titles must be unique within a tenant
             description=desc,
             status=status,
             priority=rng.choice(["low", "moderate", "high"]),
