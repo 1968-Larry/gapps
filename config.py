@@ -121,6 +121,11 @@ class Config:
     RISK_REMINDER_TO = os.environ.get("RISK_REMINDER_TO", "assignee")
     RISK_REMINDER_CC = os.environ.get("RISK_REMINDER_CC", "")
     RISK_REMINDER_FALLBACK_TO = os.environ.get("RISK_REMINDER_FALLBACK_TO", "risk_managers")
+    # Never send reminders to these domains (and their subdomains). The default keeps
+    # the fake users of the demo tenant (tools/seed_demo.py) from receiving mail.
+    RISK_REMINDER_EXCLUDE_DOMAINS = os.environ.get(
+        "RISK_REMINDER_EXCLUDE_DOMAINS", "demo.example.com"
+    )
     # Public address of the app, used for the links in the emails.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
     AUDIT_TRUST_FORWARDED_FOR = (

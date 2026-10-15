@@ -158,10 +158,19 @@ def _emails_for_token(token, risk, models):
     return [u.email for u in users if u and u.email and u.is_active]
 
 
-def resolve_recipients(tokens, risk, models):
+def _excluded(email, domains):
+    domain = email.rsplit("@", 1)[-1].lower()
+    return any(domain == d or domain.endswith("." + d) for d in domains)
+
+
+def resolve_recipients(tokens, risk, models, exclude_domains=()):
+    """Email addresses for the tokens; addresses in exclude_domains (and their
+    subdomains) are dropped, for example the fake users of the demo tenant."""
     emails = []
     for token in tokens:
         for email in _emails_for_token(token, risk, models):
+            if _excluded(email, exclude_domains):
+                continue
             if email.lower() not in [e.lower() for e in emails]:
                 emails.append(email)
     return emails
@@ -180,6 +189,7 @@ def run(app, dry_run=False, today=None, out=print):
     to_tokens = parse_tokens(cfg.get("RISK_REMINDER_TO", "assignee"))
     cc_tokens = parse_tokens(cfg.get("RISK_REMINDER_CC", ""))
     fallback_tokens = parse_tokens(cfg.get("RISK_REMINDER_FALLBACK_TO", "risk_managers"))
+    exclude_domains = [d.lower() for d in parse_tokens(cfg.get("RISK_REMINDER_EXCLUDE_DOMAINS", ""))]
     base_url = (cfg.get("APP_BASE_URL") or "").strip()
     if not base_url:
         out("[WARNING] APP_BASE_URL is not set - the emails will not contain links")
@@ -209,15 +219,15 @@ def run(app, dry_run=False, today=None, out=print):
             state = reminder_state(target, today, days_before, repeat_days, last)
             if not state:
                 continue
-            to = resolve_recipients(to_tokens, risk, models) or resolve_recipients(
-                fallback_tokens, risk, models
+            to = resolve_recipients(to_tokens, risk, models, exclude_domains) or resolve_recipients(
+                fallback_tokens, risk, models, exclude_domains
             )
             if not to:
                 skipped_no_recipient += 1
                 out("[WARNING] No recipient for risk %r (%s) - skipped" % (risk.title, kind))
                 continue
             cc = [
-                e for e in resolve_recipients(cc_tokens, risk, models)
+                e for e in resolve_recipients(cc_tokens, risk, models, exclude_domains)
                 if e.lower() not in [t.lower() for t in to]
             ]
             key = group_key(to, cc)
