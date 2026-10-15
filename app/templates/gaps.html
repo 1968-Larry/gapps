@@ -52,28 +52,26 @@
 							<option value="5">At least 5 projects</option>
 						</select>
 					</label>
-					<div class="form-control">
+					<div class="form-control relative" x-data="{pickerOpen: false}" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
 						<span class="label-text text-xs mb-1">Projects</span>
-						<details class="dropdown" x-ref="projectPicker">
-							<summary class="btn btn-sm btn-outline border-base-300 font-normal min-w-48 justify-between">
-								<span x-text="projectSummary()"></span>
-								<i class="ti ti-chevron-down"></i>
-							</summary>
-							<div class="dropdown-content bg-base-100 rounded-box z-[10] w-72 p-3 shadow border border-base-300">
-								<div class="flex justify-between mb-2 text-xs">
-									<button class="underline" @click="selectAllProjects()">Select all</button>
-									<button class="underline" @click="selectNoProjects()">Clear</button>
-								</div>
-								<div class="max-h-64 overflow-y-auto space-y-1">
-									<template x-for="project in projectList" :key="project.id">
-										<label class="flex items-center gap-2 cursor-pointer text-sm">
-											<input type="checkbox" class="checkbox checkbox-xs" :checked="isSelected(project.id)" @change="toggleProject(project.id)" />
-											<span x-text="project.name"></span>
-										</label>
-									</template>
-								</div>
+						<button type="button" @click="pickerOpen = !pickerOpen" class="btn btn-sm btn-outline border-base-300 font-normal min-w-48 justify-between">
+							<span x-text="projectSummary()"></span>
+							<i class="ti" :class="pickerOpen ? 'ti-chevron-up' : 'ti-chevron-down'"></i>
+						</button>
+						<div x-show="pickerOpen" x-cloak style="position:absolute; top:100%; left:0; margin-top:4px; z-index:1000; width:18rem;" class="bg-base-100 rounded-box p-3 shadow-xl border border-base-300">
+							<div class="flex justify-between mb-2 text-xs">
+								<button type="button" class="underline" @click="selectAllProjects()">Select all</button>
+								<button type="button" class="underline" @click="selectNoProjects()">Clear</button>
 							</div>
-						</details>
+							<div style="max-height:16rem; overflow-y:auto;" class="space-y-1">
+								<template x-for="project in projectList" :key="project.id">
+									<label class="flex items-center gap-2 cursor-pointer text-sm">
+										<input type="checkbox" class="checkbox checkbox-xs" :checked="isSelected(project.id)" @change="toggleProject(project.id)" />
+										<span x-text="project.name"></span>
+									</label>
+								</template>
+							</div>
+						</div>
 					</div>
 					<label class="form-control">
 						<span class="label-text text-xs mb-1">Search</span>
