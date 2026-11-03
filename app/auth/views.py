@@ -3,6 +3,7 @@ from flask import (
     flash,
     redirect,
     url_for,
+    jsonify,
 )
 from flask_login import current_user, logout_user
 from app.utils.decorators import custom_login, login_required, is_logged_in
@@ -12,6 +13,7 @@ from app.email import send_email
 from app.utils import misc
 from app.auth.flows import UserFlow
 from app.utils.audit import log_event
+from app.utils.session_timeout import session_state, safe_next
 
 
 @auth.route("/login", methods=["GET"])
@@ -23,7 +25,7 @@ def get_login():
 @auth.route("/login", methods=["POST"])
 @is_logged_in
 def post_login():
-    next_page = request.args.get("next")
+    next_page = safe_next(request.args.get("next"))
     return UserFlow(
         request.form, "login", "local", next_page=next_page or url_for("main.home")
     ).handle_flow()
@@ -349,3 +351,21 @@ def post_get_started():
         abort(400, str(e))
     flash("Created tenant")
     return redirect(url_for("main.home"))
+
+
+# --- session timeout (see app/utils/session_timeout.py) -----------------------
+
+@auth.route("/session/status", methods=["GET"])
+def session_status():
+    """Time left of the session. Polled by the page; does NOT count as activity."""
+    if not current_user.is_authenticated:
+        return jsonify({"ok": False, "message": "Not logged in", "code": 401}), 401
+    return jsonify({"ok": True, **session_state()})
+
+
+@auth.route("/session/extend", methods=["POST"])
+def session_extend():
+    """The "Stay logged in" button. The request itself resets the idle timer."""
+    if not current_user.is_authenticated:
+        return jsonify({"ok": False, "message": "Not logged in", "code": 401}), 401
+    return jsonify({"ok": True, **session_state()})

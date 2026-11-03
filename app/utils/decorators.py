@@ -3,6 +3,7 @@ from flask import request, jsonify, redirect, url_for, flash
 from app.models import *
 from flask_login import current_user, login_user, logout_user
 from app.utils.audit import log_event
+from app.utils.session_timeout import start_session, safe_next
 
 
 def custom_login(user):
@@ -10,6 +11,9 @@ def custom_login(user):
         user.login_count = (user.login_count or 0) + 1
         db.session.commit()
         login_user(user)
+        # API calls with a token header are not session based
+        if not request.headers.get("token"):
+            start_session()
 
 
 def validate_token_in_header(enc_token):
@@ -26,7 +30,7 @@ def validate_token_in_header(enc_token):
 def is_logged_in(f):
     @wraps(f)
     def decorated_function(*args, **kws):
-        next_page = request.args.get("next")
+        next_page = safe_next(request.args.get("next"))
         if current_user.is_authenticated:
             flash("You are already logged in", "success")
             return redirect(next_page or url_for("main.home"))
@@ -63,6 +67,9 @@ def login_required(view_function):
             custom_login(user)
         else:
             if not current_user.is_authenticated:
+                if request.path.startswith("/api/"):
+                    # fetch() calls get a 401 the page can act on, not a login page
+                    return jsonify({"ok": False, "message": "Not logged in", "code": 401}), 401
                 return redirect(url_for("auth.get_login", next=request.full_path))
 
             if not current_user.is_active:

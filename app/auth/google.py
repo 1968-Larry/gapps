@@ -3,6 +3,7 @@ from flask import request, abort, redirect, url_for, session, current_app, flash
 from authlib.integrations.base_client.errors import MismatchingStateError, OAuthError
 from app.utils.audit import log_event
 from app.auth.flows import UserFlow
+from app.utils.session_timeout import safe_next
 from app.models import Tenant
 import secrets
 
@@ -23,6 +24,7 @@ def google_auth(flow):
     nonce = secrets.token_urlsafe(16)
     session["nonce"] = nonce
     session["flow_type"] = flow
+    session["login_next"] = safe_next(request.args.get("next"))
     session["token"] = request.args.get("token")
     redirect_uri = url_for(
         "auth.authorize_with_google",
@@ -78,6 +80,11 @@ def authorize_with_google():
         abort(403, "Invalid identity token")
 
     attributes = {"token": session.get("token")}
-    return UserFlow(user_info=user_info, flow_type=flow, provider="google").handle_flow(
+    return UserFlow(
+        user_info=user_info,
+        flow_type=flow,
+        provider="google",
+        next_page=session.pop("login_next", None),
+    ).handle_flow(
         attributes
     )

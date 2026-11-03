@@ -209,6 +209,8 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | Setting | Default | Meaning |
 |---|---|---|
 | `ADFS_SERVER` | empty | Host name of an on-prem ADFS (`sts.example.com`). Empty = Microsoft Entra ID. Used with `ENABLE_MICROSOFT_AUTH=true` |
+| `SESSION_IDLE_TIMEOUT_MINUTES` / `SESSION_ABSOLUTE_TIMEOUT_HOURS` | `30` / `4` | Logout after inactivity / this long after login, whatever the activity. A warning is shown 2 / 10 minutes before. Expiry is logged as `session_expired` (reason `idle` or `absolute`). `0` = off |
+| `SESSION_COOKIE_SECURE` | `true` when `HOST_NAME` is https | Send the session cookie over https only |
 | `AUDIT_LOG_ENABLED` / `AUDIT_LOG_PATH` / `AUDIT_LOG_RETENTION_DAYS` | `true` / `/var/log/app/audit.log` / `90` | JSON audit log, one file per day |
 | `AUDIT_GUI_ENABLED` / `AUDIT_GUI_RETENTION_DAYS` / `AUDIT_GUI_EVENTS` | `true` / `90` / built-in list | Events that are also shown on the Logs page |
 | `RISK_REVIEW_INTERVALS` | `very high=3,high=6,low=12,very low=12` | Months to the next review per risk level |

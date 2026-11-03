@@ -1,0 +1,174 @@
+{# Session timeout warning. Included by layouts/sidebar-nav.html.
+   The server enforces the timeouts (app/utils/session_timeout.py); this only
+   warns before it happens and sends the user to the login page when it has. #}
+{% set st = session_state() %}
+{% if st.idle_timeout or st.absolute_timeout %}
+<dialog id="session-idle-dialog" class="modal">
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">Are you still there?</h3>
+    <p class="py-4">You will be logged out in <b id="session-idle-countdown">2:00</b> because of inactivity.</p>
+    <div class="modal-action">
+      <a href="{{ url_for('auth.logout') }}" class="btn btn-ghost">Log out</a>
+      <button type="button" id="session-stay-btn" class="btn btn-primary">Stay logged in</button>
+    </div>
+  </div>
+</dialog>
+
+<div id="session-absolute-banner" class="hidden fixed bottom-4 right-4 z-50 max-w-sm">
+  <div class="alert alert-warning shadow-lg">
+    <i class="ti ti-clock text-xl"></i>
+    <span>Your session ends in <b id="session-absolute-countdown"></b> (maximum session length). Save your work, you will have to log in again.</span>
+    <button type="button" id="session-absolute-ok" class="btn btn-sm">OK</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const IDLE = {{ (st.idle_timeout or 0) | int }} * 1000;
+  const ABS_REMAINING = {{ st.absolute_remaining | tojson }};   // seconds, null = no limit
+  const ABS = {{ (st.absolute_timeout or 0) | int }} * 1000;
+  // Warn this long before logout: 2 min (idle) / 10 min (absolute), less for very short limits
+  const IDLE_WARN = Math.min(2 * 60 * 1000, IDLE / 4);
+  const ABS_WARN = Math.min(10 * 60 * 1000, ABS / 4);
+  const STATUS_URL = "{{ url_for('auth.session_status') }}";
+  const EXTEND_URL = "{{ url_for('auth.session_extend') }}";
+  const LOGIN_URL = "{{ url_for('auth.get_login') }}";
+  const KEY = "gapps_session";           // shared by all tabs
+
+  // Times are kept on the local clock: the server only sends "seconds left".
+  let lastActivity = Date.now();
+  let absEnd = ABS_REMAINING == null ? null : Date.now() + ABS_REMAINING * 1000;
+  let absDismissed = false;
+  let checking = false;
+  let lastCheck = 0;
+  let leaving = false;
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY) || "{}");
+      if (s.lastActivity > lastActivity) lastActivity = s.lastActivity;
+    } catch (e) {}
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ lastActivity: lastActivity })); } catch (e) {}
+  }
+  function sync(data) {
+    const now = Date.now();
+    if (data.idle_remaining != null) lastActivity = now - (IDLE - data.idle_remaining * 1000);
+    if (data.absolute_remaining != null) absEnd = now + data.absolute_remaining * 1000;
+    save();
+  }
+  function activity() { lastActivity = Date.now(); save(); }
+
+  function expired() {
+    if (leaving) return;
+    leaving = true;
+    const next = location.pathname + location.search;
+    location.href = LOGIN_URL + "?next=" + encodeURIComponent(next);
+  }
+
+  // Our own fetch calls must not be counted as activity
+  const origFetch = window.fetch.bind(window);
+  function rawFetch(url, opts) {
+    return origFetch(url, Object.assign({ credentials: "same-origin", headers: { Accept: "application/json" } }, opts));
+  }
+
+  // Every request the page makes resets the idle timer on the server, so
+  // mirror that here. A 401 (or a redirect to the login page) means the
+  // session is gone: leave the page before the user types anything more.
+  window.fetch = function (input, init) {
+    return origFetch(input, init).then(function (resp) {
+      try {
+        const url = new URL(resp.url || String(input), location.href);
+        if (url.origin === location.origin) {
+          if (resp.status === 401 || (resp.redirected && url.pathname === LOGIN_URL)) {
+            expired();
+          } else {
+            activity();
+          }
+        }
+      } catch (e) {}
+      return resp;
+    });
+  };
+  if (window.jQuery) {
+    jQuery(document).ajaxComplete(function (ev, xhr) {
+      if (xhr.status === 401) expired(); else activity();
+    });
+  }
+
+  function check() {
+    if (checking) return;
+    checking = true;
+    lastCheck = Date.now();
+    rawFetch(STATUS_URL)
+      .then(function (r) {
+        if (r.status === 401) { expired(); return null; }
+        return r.ok ? r.json() : null;
+      })
+      .then(function (d) { if (d) sync(d); })
+      .catch(function () {})
+      .finally(function () { checking = false; });
+  }
+
+  const dialog = document.getElementById("session-idle-dialog");
+  const idleCountdown = document.getElementById("session-idle-countdown");
+  const banner = document.getElementById("session-absolute-banner");
+  const absCountdown = document.getElementById("session-absolute-countdown");
+
+  function fmt(ms) {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  function stay() {
+    rawFetch(EXTEND_URL, { method: "POST" })
+      .then(function (r) {
+        if (r.status === 401) { expired(); return null; }
+        return r.ok ? r.json() : null;
+      })
+      .then(function (d) { if (d) { sync(d); if (dialog.open) dialog.close(); } })
+      .catch(function () {});
+  }
+  document.getElementById("session-stay-btn").addEventListener("click", stay);
+  dialog.addEventListener("cancel", function (e) { e.preventDefault(); stay(); });  // Esc
+  document.getElementById("session-absolute-ok").addEventListener("click", function () {
+    absDismissed = true;
+    banner.classList.add("hidden");
+  });
+
+  function tick() {
+    load();
+    const now = Date.now();
+    const idleLeft = IDLE ? lastActivity + IDLE - now : Infinity;
+    const absLeft = absEnd != null ? absEnd - now : Infinity;
+
+    // Time is up locally: ask the server (it logs out and records the reason)
+    if (idleLeft <= 0 || absLeft <= 0) {
+      if (now - lastCheck > 5000) check();
+    }
+
+    // Idle warning (not when the absolute limit comes first anyway)
+    if (idleLeft <= IDLE_WARN && idleLeft < absLeft) {
+      if (!dialog.open) {
+        if (now - lastCheck > 5000) check();   // another tab may have been active
+        if (!checking && lastActivity + IDLE - Date.now() <= IDLE_WARN) dialog.showModal();
+      }
+      idleCountdown.textContent = fmt(idleLeft);
+    } else if (dialog.open) {
+      dialog.close();                          // extended, here or in another tab
+    }
+
+    // Absolute limit: cannot be extended, just warn
+    if (absLeft <= ABS_WARN && !absDismissed) {
+      banner.classList.remove("hidden");
+      absCountdown.textContent = fmt(absLeft);
+    }
+  }
+
+  window.addEventListener("storage", function (e) { if (e.key === KEY) tick(); });
+  activity();
+  setInterval(tick, 1000);
+})();
+</script>
+{% endif %}

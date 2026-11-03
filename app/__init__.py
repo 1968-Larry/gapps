@@ -8,6 +8,7 @@ from authlib.integrations.flask_client import OAuth
 from sqlalchemy import exc
 import logging
 from app.utils.audit import configure_audit_logger, log_event
+from app.utils.session_timeout import init_session_timeout
 
 
 db = SQLAlchemy()
@@ -29,6 +30,7 @@ def create_app(config_name="default"):
     configure_errors(app)
     configure_logging(app)
     configure_audit_logger(app)
+    init_session_timeout(app)
     set_config_options(app)
 
     """

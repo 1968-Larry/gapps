@@ -128,6 +128,20 @@ class Config:
     )
     # Public address of the app, used for the links in the emails.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
+    # Session timeouts, enforced by the server (app/utils/session_timeout.py).
+    # Idle: logged out after this many minutes without a request. Absolute: logged
+    # out this many hours after login, whatever the activity. 0 = off.
+    SESSION_IDLE_TIMEOUT_MINUTES = float(os.environ.get("SESSION_IDLE_TIMEOUT_MINUTES", 30))
+    SESSION_ABSOLUTE_TIMEOUT_HOURS = float(
+        os.environ.get("SESSION_ABSOLUTE_TIMEOUT_HOURS", 4)
+    )
+    # Session cookie. SECURE defaults to on when HOST_NAME is https.
+    SESSION_COOKIE_SECURE = (
+        os.environ.get("SESSION_COOKIE_SECURE", str(scheme == "https")).lower() == "true"
+    )
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
+
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )
