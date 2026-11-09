@@ -237,7 +237,7 @@ def update_exception(id):
             exc.tenant, data.get("assignee")
         )
     try:
-        exc.update(data)
+        exc.update(data, confirm_resubmit=bool(data.get("confirm_resubmit")))
     except ValueError as e:
         db.session.rollback()
         return jsonify({"message": str(e)}), 400

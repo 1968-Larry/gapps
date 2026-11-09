@@ -43,6 +43,14 @@ function exceptionsMixin() {
 		showRemoveExceptionModal: false,
 		removeExceptionId: null,
 		showDeleteExceptionModal: false,
+		// last saved values of the fields that need a new approval when changed
+		excSaved: {},
+		excResubmit: null,  // {changes: [[label, old, new]], level, approver} while asking
+		excMaterialFields: {
+			justification: "Justification", compensating_controls: "Compensating controls",
+			affected_assets: "Affected assets", likelihood: "Likelihood", impact: "Impact",
+			risk: "Level", valid_from: "Valid from", expiry_date: "Expiry date",
+		},
 		excStateLabels: {
 			draft: "Draft", submitted: "Awaiting approval", rejected: "Rejected",
 			active: "Active", expired: "Expired", closed: "Closed"
@@ -252,7 +260,31 @@ function exceptionsMixin() {
 		},
 
 		// -- drawer ----------------------------------------------------------------
+		excRemember(exc) {
+			this.excSaved = {}
+			for (const f of Object.keys(this.excMaterialFields)) this.excSaved[f] = exc[f] ?? null
+		},
+		excMaterialChanges(exc) {
+			const norm = v => (v === undefined || v === null || v === "") ? null : String(v).trim()
+			return Object.entries(this.excMaterialFields)
+				.filter(([f]) => norm(exc[f]) !== norm(this.excSaved[f]))
+				.map(([f, label]) => [label, this.excSaved[f] ?? "-", exc[f] ?? "-"])
+		},
+		excApproverFor(exc) {
+			const rules = this.excSettings.approvers || {}
+			const labels = this.excSettings.approver_labels || {}
+			let who = rules[(exc.risk || "").toLowerCase()] || "riskmanager"
+			if (who === "project_manager" && !exc.project_id) who = "riskmanager"
+			return labels[who] || who
+		},
+		excCancelResubmit() {
+			// put the approved values back
+			const exc = this.selectedException
+			for (const f of Object.keys(this.excMaterialFields)) exc[f] = this.excSaved[f]
+			this.excResubmit = null
+		},
 		openExceptionDrawer(exc) {
+			this.excRemember(exc)
 			this.selectedException = exc
 			this.excMessages = exc.comments || []
 			this.excDecisionNote = ""
@@ -293,20 +325,31 @@ function exceptionsMixin() {
 		excApply(data) {
 			// same object as in the list, so the table follows
 			Object.assign(this.selectedException, data)
+			this.excRemember(this.selectedException)
 			this.excMessages = this.selectedException.comments || []
 			this.filterExceptions()
 			this.getExceptionSummary()
 		},
-		saveException() {
+		saveException(confirmed = false) {
 			const exc = this.selectedException
 			if (!exc.id || this.excReadOnly(exc)) return
 			const wasApproved = exc.status === "approved"
+			if (wasApproved && !confirmed) {
+				const changes = this.excMaterialChanges(exc)
+				if (changes.length) {
+					// ask first: saving takes the approval away
+					this.excResubmit = {changes: changes, level: exc.risk, approver: this.excApproverFor(exc)}
+					return
+				}
+			}
+			this.excResubmit = null
 			const data = {
 				title: exc.title, description: exc.description, justification: exc.justification,
 				compensating_controls: exc.compensating_controls, affected_assets: exc.affected_assets,
 				likelihood: exc.likelihood || null, impact: exc.impact || null, risk: exc.risk,
 				ticket_number: exc.ticket_number || null, valid_from: exc.valid_from || null,
-				expiry_date: exc.expiry_date || null, assignee: exc.assignee || null
+				expiry_date: exc.expiry_date || null, assignee: exc.assignee || null,
+				confirm_resubmit: confirmed
 			}
 			request("PUT", `/api/v1/exceptions/${exc.id}`,
 				resp => {

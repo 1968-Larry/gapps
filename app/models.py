@@ -4585,11 +4585,13 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
         db.session.commit()
         return self
 
-    def update(self, data):
+    def update(self, data, confirm_resubmit=False):
         """
         Update the editable fields from a dict. A material change on an approved
         exception (expiry date, assessment, justification, ...) sends it back
-        to "submitted" so it is approved again.
+        to "submitted" so it is approved again - only when confirm_resubmit is
+        set; otherwise nothing is saved and 409 is returned, so an approval is
+        never lost by accident.
         """
         if self.status == "closed":
             abort(400, "A closed exception can not be changed, reopen it first")
@@ -4609,6 +4611,16 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
         if self.likelihood and self.impact:
             self.recalculate_risk()
         material = [f for f in changed if f in self.MATERIAL_FIELDS]
+        if self.status == "approved" and material and not confirm_resubmit:
+            approver = self.APPROVER_LABELS[self.required_approver()]
+            level = self.risk
+            db.session.rollback()
+            abort(
+                409,
+                "Changing " + ", ".join(f.replace("_", " ") for f in material)
+                + " sends the approved exception back for approval"
+                + f" (level {level}, approved by {approver}). Confirm to continue.",
+            )
         if self.status == "approved" and material:
             self.decided_by = None
             self.decided_date = None

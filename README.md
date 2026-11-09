@@ -42,7 +42,9 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   (`EXCEPTION_APPROVERS`, default: CISO for high and very high, security manager for low and very
   low); a higher role may approve lower levels, never the person who requested it, and admins only
   when nobody else holds the required role. A material change to an approved exception (assessment,
-  dates, justification ...) sends it back for approval, to the role its new level needs. Active /
+  dates, justification ...) sends it back for approval, to the role its new level needs - after a
+  confirmation that shows what changes and who must approve (the API refuses it with 409 unless
+  `confirm_resubmit` is sent). Active /
   expired is derived from the expiry date
 - Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks
   (shown both ways)

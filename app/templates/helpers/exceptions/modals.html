@@ -151,3 +151,27 @@
 		</div>
 	</div>
 </div>
+
+<div class="modal" x-bind:class="{ 'modal-open': !!excResubmit }">
+	<div class="modal-box max-w-xl">
+		<h2 class="text-xl font-semibold px-6 my-4"><i class="ti ti-alert-triangle text-warning mr-1"></i>Send back for approval?</h2>
+		<div class="px-6 text-sm">
+			<p class="mb-3">This exception is approved. Saving this change takes the approval away and sends it back for a new decision.</p>
+			<table class="table table-sm mb-3">
+				<thead><tr><th>Field</th><th>Approved value</th><th>New value</th></tr></thead>
+				<tbody>
+					<template x-for="c in (excResubmit ? excResubmit.changes : [])" :key="c[0]">
+						<tr><td class="font-semibold" x-text="c[0]"></td><td class="opacity-70" x-text="c[1]"></td><td x-text="c[2]"></td></tr>
+					</template>
+				</tbody>
+			</table>
+			<p class="mb-1">Level after the change: <span class="font-semibold uppercase" x-text="excResubmit ? excResubmit.level : ''"></span>
+				- approved by <span class="font-semibold" x-text="excResubmit ? excResubmit.approver : ''"></span>.</p>
+			<p class="opacity-70">Until it is approved again it counts as awaiting approval, not as active.</p>
+		</div>
+		<div class="modal-action">
+			<button class="btn" @click="excCancelResubmit()">Cancel - keep the approved values</button>
+			<button class="btn btn-warning" @click="saveException(true)">Save and send for approval</button>
+		</div>
+	</div>
+</div>
