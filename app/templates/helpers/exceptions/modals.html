@@ -1,0 +1,140 @@
+{# Create / attach / remove / delete dialogs for exceptions #}
+<div class="modal" x-bind:class="{ 'modal-open': showCreateException }">
+	<div class="modal-box max-w-4xl">
+		<form method="dialog">
+			<button @click="showCreateException=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+		</form>
+		<h2 class="py-2 text-xl font-semibold px-6">Create Exception</h2>
+		<p class="px-6 text-sm opacity-70" x-show="creatingExcForSubControl && selectedSubControl">
+			Will be linked to <span class="font-semibold" x-text="selectedSubControl ? (selectedSubControl.ref_code + ' ' + selectedSubControl.name) : ''"></span>.
+		</p>
+		<div class="grid grid-cols-12 gap-4 card-body">
+			<div class="col-span-12">
+				<label class="block text-sm font-medium mb-2">Title</label>
+				<input x-model="excPayload.title" type="text" placeholder="e.g. SMBv1 enabled on the legacy document scanners" class="input input-sm input-bordered w-full" />
+			</div>
+			<div class="col-span-6">
+				<label class="block text-sm font-medium mb-2">Description - which requirement is not met</label>
+				<textarea rows="3" x-model="excPayload.description" class="textarea textarea-sm textarea-bordered w-full" placeholder="e.g. Hardening baseline 2.3: SMBv1 must be disabled"></textarea>
+			</div>
+			<div class="col-span-6">
+				<label class="block text-sm font-medium mb-2">Justification - why it can not be met</label>
+				<textarea rows="3" x-model="excPayload.justification" class="textarea textarea-sm textarea-bordered w-full" placeholder="Business reason, technical limitation, vendor dependency ..."></textarea>
+			</div>
+			<div class="col-span-6">
+				<label class="block text-sm font-medium mb-2">Compensating controls</label>
+				<textarea rows="2" x-model="excPayload.compensating_controls" class="textarea textarea-sm textarea-bordered w-full" placeholder="What is done instead to reduce the risk"></textarea>
+			</div>
+			<div class="col-span-6">
+				<label class="block text-sm font-medium mb-2">Affected assets</label>
+				<textarea rows="2" x-model="excPayload.affected_assets" class="textarea textarea-sm textarea-bordered w-full" placeholder="Systems, hosts, groups ..."></textarea>
+			</div>
+			<div class="col-span-3">
+				<label class="block text-sm font-medium mb-2">Likelihood</label>
+				<select @change="excRecalc(excPayload)" x-model.number="excPayload.likelihood" class="select select-sm select-bordered w-full">
+					<option value="">Not assessed</option>
+					<option value="4">4 - Very high</option>
+					<option value="3">3 - High</option>
+					<option value="2">2 - Low</option>
+					<option value="1">1 - Very low</option>
+				</select>
+			</div>
+			<div class="col-span-3">
+				<label class="block text-sm font-medium mb-2">Impact</label>
+				<select @change="excRecalc(excPayload)" x-model.number="excPayload.impact" class="select select-sm select-bordered w-full">
+					<option value="">Not assessed</option>
+					<option value="4">4 - Very serious</option>
+					<option value="3">3 - Serious</option>
+					<option value="2">2 - Noticeable</option>
+					<option value="1">1 - Small</option>
+				</select>
+			</div>
+			<div class="col-span-2">
+				<label class="block text-sm font-medium mb-2">Level</label>
+				<div class="mt-1"><span :class="excLevelClass(excPayload.risk)" class="p-1 px-2 rounded-lg uppercase text-ss text-white" x-text="excPayload.risk || 'unknown'"></span></div>
+			</div>
+			<div class="col-span-4">
+				<label class="block text-sm font-medium mb-2">Owner</label>
+				<select x-model="excPayload.assignee" class="select select-sm select-bordered w-full">
+					<option value="">No owner</option>
+					<template x-for="user in projectUsers" :key="user.id">
+						<option :value="user.id" x-text="user.email"></option>
+					</template>
+				</select>
+			</div>
+			<div class="col-span-4">
+				<label class="block text-sm font-medium mb-2">Expiry date</label>
+				<input type="date" x-model="excPayload.expiry_date" class="input input-sm input-bordered w-full" />
+				<div class="flex gap-1 mt-1">
+					<template x-for="m in [3, 6, 12]" :key="m">
+						<button x-show="!excSettings.max_validity_months || m <= excSettings.max_validity_months" @click="excPayload.expiry_date = excAddMonths(m)" class="btn btn-xs btn-ghost border border-base-300" x-text="m + ' months'"></button>
+					</template>
+				</div>
+			</div>
+			<div class="col-span-4">
+				<label class="block text-sm font-medium mb-2">Valid from</label>
+				<input type="date" x-model="excPayload.valid_from" class="input input-sm input-bordered w-full" />
+				<p class="text-xs opacity-70 mt-1">Empty = from approval</p>
+			</div>
+			<div class="col-span-4">
+				<label class="block text-sm font-medium mb-2">Ticket number</label>
+				<input type="text" x-model="excPayload.ticket_number" placeholder="Optional" class="input input-sm input-bordered w-full" />
+			</div>
+		</div>
+		<div class="modal-action">
+			<button class="btn" @click="showCreateException=false">Close</button>
+			<button :disabled="!excPayload.title || excBusy" @click="createException(false)" class="btn">Save as draft</button>
+			<button :disabled="!excPayload.title || !excPayload.justification || !excPayload.expiry_date || !excPayload.assignee || !excPayload.likelihood || !excPayload.impact || excBusy" @click="createException(true)" class="btn btn-primary" title="Needs justification, likelihood, impact, owner and expiry date">Create and submit</button>
+		</div>
+	</div>
+</div>
+
+<div class="modal" x-bind:class="{ 'modal-open': showAttachExceptionModal }">
+	<div class="modal-box max-w-2xl">
+		<form method="dialog">
+			<button @click="showAttachExceptionModal=false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+		</form>
+		<h2 class="text-xl font-semibold px-6 my-4">Attach Exception</h2>
+		<p class="text-sm px-6 mb-4">Select the exceptions that apply to this subcontrol.</p>
+		<div class="px-6 max-h-96 overflow-y-auto">
+			<div x-show="!exceptions.filter(e => e.status !== 'closed').length" class="text-sm opacity-70">There are no open exceptions in this project yet.</div>
+			<template x-for="exc in exceptions.filter(e => e.status !== 'closed' || excAttachSelected.includes(e.id))" :key="exc.id">
+				<label class="flex items-center gap-3 py-2 border-b border-base-300 hover:cursor-pointer">
+					<input type="checkbox" class="checkbox checkbox-sm" :checked="excAttachSelected.includes(exc.id)" @change="toggleAttachException(exc.id, $event.target.checked)" />
+					<span :class="excStateClass(exc.state)" class="px-2 rounded-lg uppercase text-ss text-primary-content whitespace-nowrap" x-text="excStateLabels[exc.state]"></span>
+					<span class="text-sm flex-1" x-text="exc.title"></span>
+					<span :class="excLevelClass(exc.risk)" class="px-2 rounded-lg uppercase text-ss text-white" x-text="exc.risk"></span>
+				</label>
+			</template>
+		</div>
+		<div class="modal-action">
+			<button class="btn" @click="showAttachExceptionModal=false">Close</button>
+			<button @click="saveAttachedExceptions" class="btn btn-success">Update</button>
+		</div>
+	</div>
+</div>
+
+<div class="modal" x-bind:class="{ 'modal-open': showRemoveExceptionModal }">
+	<div class="modal-box">
+		<h2 class="text-xl font-semibold px-6 my-4">Remove Exception</h2>
+		<p class="text-sm px-6 mb-4">Remove this exception from the subcontrol? The exception itself is not deleted.</p>
+		<div class="modal-action">
+			<button class="btn" @click="showRemoveExceptionModal = false">Close</button>
+			<button class="btn btn-error" @click="removeExceptionFromSubControl(removeExceptionId)">Remove</button>
+		</div>
+	</div>
+</div>
+
+<div class="modal" x-bind:class="{ 'modal-open': showDeleteExceptionModal }">
+	<div class="modal-box">
+		<h2 class="text-xl font-semibold px-6 my-4">Delete Exception</h2>
+		<p class="text-sm px-6 mb-4">
+			Delete <span class="font-semibold" x-text="selectedException.title"></span> with its comments and history?
+			To keep the record for audits, close it instead.
+		</p>
+		<div class="modal-action">
+			<button class="btn" @click="showDeleteExceptionModal = false">Cancel</button>
+			<button class="btn btn-error" @click="deleteException()">Delete</button>
+		</div>
+	</div>
+</div>

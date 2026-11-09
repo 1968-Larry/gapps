@@ -33,6 +33,22 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Daily email reminders to risk owners before review/due dates and when overdue; recipients (To/Cc)
   and timing are set in `.env` (`tools/send_risk_reminders.py`)
 
+**Exceptions (deviations)**
+- Exceptions tab in every project for approved, time limited deviations from controls, hardening,
+  patching or policies: description, justification, compensating controls, affected assets
+- Same 4x4 assessment as risks, owner, ticket number, valid from / expiry date (at most
+  `EXCEPTION_MAX_VALIDITY_MONTHS`)
+- Approval flow: draft -> submitted -> approved / rejected -> closed. Approved by a project manager,
+  risk manager or admin, never by the person who requested it. A material change to an approved
+  exception (assessment, dates, justification ...) sends it back for approval. Active / expired is
+  derived from the expiry date
+- Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks
+  (shown both ways)
+- Change history, comments, audit log events (`exception_approved`, `exception_rejected`, ...)
+- Counted per level on the project summary: active, awaiting approval, expiring soon, expired.
+  Exceptions do not change the implementation % of the controls
+- Expiry reminders by the same daily `tools/send_risk_reminders.py` run
+
 **Controls and evidence**
 - Custom controls and sub-controls: choose the reference code, rename, and add sub-controls
 - Ticket number on sub-controls and a link field on evidence
@@ -220,6 +236,10 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `RISK_REMINDER_OVERDUE_REPEAT_DAYS` | `7` | Repeat every N days once overdue, `0` = never |
 | `RISK_REMINDER_EXCLUDE_DOMAINS` | `demo.example.com` | Never send reminders to these domains (protects the demo users) |
 | `APP_BASE_URL` | empty | Public address of the app, used for the links in the reminder mails |
+| `EXCEPTION_MAX_VALIDITY_MONTHS` | `12` | Longest validity of an exception from approval, `0` = no limit |
+| `EXCEPTION_EXPIRING_SOON_DAYS` | `30` | "Expiring soon" is shown this many days before the expiry date |
+| `EXCEPTION_ALLOW_SELF_APPROVAL` | `false` | Let the requester approve their own exception (only for one-person setups) |
+| `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
 
 ##### Risk reminder emails
 Reminders are sent by a small script that you run once a day from the docker host, for example from cron.
@@ -228,6 +248,7 @@ Try it first with `--dry-run`, which only shows what would be sent:
 docker exec app python3 tools/send_risk_reminders.py --dry-run
 30 7 * * *  docker exec app python3 tools/send_risk_reminders.py
 ```
+The same run reminds the owners of approved exceptions about the expiry date (`EXCEPTION_REMINDERS_ENABLED`).
 The normal `MAIL_*` settings are used. A reminder is sent once per risk, date and interval, so running the script
 more often does not send duplicates. The `tools/` folder is part of the image, rebuild it
 (`docker compose build app && docker compose up -d app`) after pulling.
@@ -241,7 +262,7 @@ Set `BACKUP_PASSPHRASE` to encrypt the configuration (it contains secrets) and `
 See the header of each script for all options. More in `db/README.md`.
 
 ##### Demo tenant with example data
-Creates a tenant called `demo` with fake users (`@demo.example.com`), 10 projects, subcontrol status, evidence and risks:
+Creates a tenant called `demo` with fake users (`@demo.example.com`), 10 projects, subcontrol status, evidence, risks and exceptions in every state:
 ```
 docker exec app python3 tools/seed_demo.py --frameworks iso_27001_2022
 docker exec app python3 tools/seed_demo.py --reset --frameworks iso_27001_2022    # delete and recreate

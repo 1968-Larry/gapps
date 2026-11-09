@@ -1,0 +1,306 @@
+{# Drawer for one exception - same layout as the risk drawer #}
+<div class="drawer drawer-end z-50">
+	<input @change="if (!$event.target.checked) closeExceptionDrawer()" id="exception-drawer" type="checkbox" class="drawer-toggle" />
+	<div class="drawer-content"></div>
+
+	<div class="drawer-side">
+		<label for="exception-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
+
+		<div class="bg-base-200 flex flex-col h-screen w-3/4 px-6">
+			<template x-if="selectedException && selectedException.id">
+			<div class="flex flex-col h-full">
+
+			<!-- Top section -->
+			<div class="border-b border-base-300 pt-4">
+				<div class="p-6 px-4 pb-1 border border-base-300 rounded-lg">
+					<div class="flex flex-row gap-x-6">
+						<div class="flex flex-row gap-x-2 my-auto">
+							<span :class="excStateClass(selectedException.state)" class="pill whitespace-nowrap" x-text="excStateLabels[selectedException.state]"></span>
+						</div>
+						<div class="flex justify-between w-full pl-6 border-l">
+							<div class="flex flex-col w-full mr-4">
+								<span class="subtitle text-xs !mb-0" x-text="'Exception - ' + selectedException.id"></span>
+								<input x-show="!excReadOnly(selectedException)" x-model="selectedException.title" @change="saveException()" class="input input-sm text-xl bg-transparent p-0 w-full" />
+								<span x-show="excReadOnly(selectedException)" class="text-xl" x-text="selectedException.title"></span>
+							</div>
+							<div class="flex flex-row gap-x-2">
+								<button @click="copyExceptionLink(selectedException.id)" title="Copy link" class="btn btn-sm btn-ghost border border-base-300"><i class="ti ti-share text-xl"></i></button>
+								<button @click="closeExceptionDrawer" title="Close" class="btn btn-sm btn-ghost border border-base-300"><i class="ti ti-x text-xl"></i></button>
+							</div>
+						</div>
+					</div>
+
+					<!-- what happens next -->
+					<div class="my-4 text-sm">
+						<div x-show="selectedException.state==='draft'" role="alert" class="alert bg-base-100 py-2">
+							<i class="ti ti-pencil"></i>
+							<span>Draft. Fill in the justification, assessment, owner and expiry date and submit it for approval.</span>
+						</div>
+						<div x-show="selectedException.state==='submitted'" role="alert" class="alert bg-base-100 py-2">
+							<i class="ti ti-hourglass text-warning"></i>
+							<span x-show="excCanDecide(selectedException)">Waiting for a decision. You can approve or reject it on the Approval tab.</span>
+							<span x-show="!excCanDecide(selectedException) && selectedException.is_requester && !excSettings.self_approval_allowed">Waiting for approval. You requested it, so someone else (project manager, risk manager or admin) must approve it.</span>
+							<span x-show="!excCanDecide(selectedException) && !(selectedException.is_requester && !excSettings.self_approval_allowed)">Waiting for approval by a project manager, risk manager or admin.</span>
+						</div>
+						<div x-show="selectedException.state==='rejected'" role="alert" class="alert bg-base-100 py-2">
+							<i class="ti ti-ban text-error"></i>
+							<span>Rejected: <span class="italic" x-text="selectedException.decision_note"></span> &middot; Change it and submit again.</span>
+						</div>
+						<div x-show="selectedException.state==='active'" role="alert" class="alert bg-base-100 py-2">
+							<i class="ti ti-shield-check text-success"></i>
+							<span>
+								Approved by <span x-text="selectedException.decided_by_email || '-'"></span> on <span x-text="selectedException.decided_date"></span>,
+								valid until <span class="font-semibold" :class="{'text-warning': selectedException.expiring_soon}" x-text="selectedException.expiry_date"></span>
+								(<span x-text="selectedException.days_left"></span> days left).
+							</span>
+						</div>
+						<div x-show="selectedException.state==='expired'" role="alert" class="alert alert-error py-2">
+							<i class="ti ti-alert-triangle"></i>
+							<span>Expired <span x-text="-selectedException.days_left"></span> days ago. Close it when the deviation is fixed, or set a new expiry date to renew it (needs a new approval).</span>
+						</div>
+						<div x-show="selectedException.state==='closed'" role="alert" class="alert bg-base-100 py-2">
+							<i class="ti ti-archive"></i>
+							<span>Closed on <span x-text="selectedException.closed_date"></span>. Read only.</span>
+						</div>
+					</div>
+
+					<div role="tablist" class="tabs gap-x-2 mb-2">
+						<button @click="changeExcTab('overview')" :class="{'btn-active': excTab==='overview'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">Overview</button>
+						<button @click="changeExcTab('approval')" :class="{'btn-active': excTab==='approval'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">
+							Approval<span x-show="excCanDecide(selectedException)" class="badge badge-warning badge-xs ml-1">!</span>
+						</button>
+						<button @click="changeExcTab('links')" :class="{'btn-active': excTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to (' + ((selectedException.links || []).length + (selectedException.risks || []).length) + ')'"></button>
+						<button @click="changeExcTab('comments')" :class="{'btn-active': excTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Comments (' + excMessages.length + ')'"></button>
+						<button @click="changeExcTab('history')" :class="{'btn-active': excTab==='history'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">History</button>
+					</div>
+				</div>
+			</div>
+
+			<!-- Scrollable middle -->
+			<div class="flex-1 overflow-y-auto p-4">
+
+				<!-- Overview -->
+				<div x-show="excTab==='overview'" class="card">
+					<div x-show="selectedException.status==='approved' && selectedException.can_edit" class="text-xs opacity-70 mb-3">
+						<i class="ti ti-info-circle"></i>
+						Changing the justification, compensating controls, assets, assessment or dates sends the exception back for approval.
+					</div>
+					<fieldset :disabled="excReadOnly(selectedException)">
+					<div class="grid grid-cols-12 gap-4">
+						<div class="col-span-4">
+							<div class="card card-body border border-base-300 p-4">
+								<div class="card-title text-base">Level</div>
+								<div class="flex flex-row items-center gap-x-3 my-2">
+									<span :class="excLevelClass(selectedException.risk)" class="p-1 px-3 rounded-lg uppercase text-sm text-white font-semibold" x-text="selectedException.risk"></span>
+									<span class="text-sm opacity-70" x-show="selectedException.score" x-text="'Score ' + selectedException.score"></span>
+								</div>
+								<label class="block text-sm font-medium mb-1 mt-2">Likelihood</label>
+								<select @change="excRecalc(selectedException); saveException()" x-model.number="selectedException.likelihood" class="select select-sm w-full">
+									<option value="" :selected="!selectedException.likelihood">Not assessed</option>
+									<option value="4" :selected="selectedException.likelihood == 4">4 - Very high</option>
+									<option value="3" :selected="selectedException.likelihood == 3">3 - High</option>
+									<option value="2" :selected="selectedException.likelihood == 2">2 - Low</option>
+									<option value="1" :selected="selectedException.likelihood == 1">1 - Very low</option>
+								</select>
+								<label class="block text-sm font-medium mb-1 mt-2">Impact</label>
+								<select @change="excRecalc(selectedException); saveException()" x-model.number="selectedException.impact" class="select select-sm w-full">
+									<option value="" :selected="!selectedException.impact">Not assessed</option>
+									<option value="4" :selected="selectedException.impact == 4">4 - Very serious</option>
+									<option value="3" :selected="selectedException.impact == 3">3 - Serious</option>
+									<option value="2" :selected="selectedException.impact == 2">2 - Noticeable</option>
+									<option value="1" :selected="selectedException.impact == 1">1 - Small</option>
+								</select>
+								<p class="text-xs opacity-70 mt-2">Assess the risk while the exception is in force, with the compensating controls in place. 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.</p>
+							</div>
+						</div>
+						<div class="col-span-8">
+							<div class="grid grid-cols-6 gap-3">
+								<div class="col-span-2">
+									<label class="block text-sm font-medium mb-2"><i x-show="!selectedException.assignee" class="ti ti-alert-triangle text-warning mr-1"></i>Owner</label>
+									<select @change="saveException()" x-model="selectedException.assignee" class="select select-sm w-full">
+										<option value="" :selected="!selectedException.assignee">Missing owner</option>
+										<template x-for="user in projectUsers" :key="user.id">
+											<option :value="user.id" x-text="user.email" :selected="selectedException.assignee === user.id"></option>
+										</template>
+									</select>
+								</div>
+								<div class="col-span-2">
+									<label class="block text-sm font-medium mb-2">Valid from</label>
+									<input type="date" x-model="selectedException.valid_from" @change="saveException()" class="input input-sm input-bordered w-full" />
+								</div>
+								<div class="col-span-2">
+									<label class="block text-sm font-medium mb-2">
+										<i x-show="!selectedException.expiry_date" class="ti ti-alert-triangle text-warning mr-1"></i>Expiry date
+										<i x-show="selectedException.state==='expired'" class="ti ti-alert-triangle text-error ml-1" title="Expired"></i>
+									</label>
+									<input type="date" x-model="selectedException.expiry_date" @change="saveException()" class="input input-sm input-bordered w-full" />
+								</div>
+								<div class="col-span-6 text-xs opacity-70">
+									At most <span x-text="excSettings.max_validity_months"></span> months. Empty "valid from" = from the day it is approved.
+								</div>
+								<div class="col-span-3">
+									<label class="block text-sm font-medium mb-2">Affected assets</label>
+									<input type="text" x-model="selectedException.affected_assets" @change="saveException()" placeholder="Systems, hosts, groups ..." class="input input-sm input-bordered w-full" />
+								</div>
+								<div class="col-span-3">
+									<label class="block text-sm font-medium mb-2">Ticket number</label>
+									<input type="text" x-model="selectedException.ticket_number" @change="saveException()" placeholder="e.g. a change or ticket id" class="input input-sm input-bordered w-full" />
+								</div>
+								<div class="col-span-6">
+									<label class="block text-sm font-medium mb-2">Description - which requirement is not met</label>
+									<textarea rows="3" x-model="selectedException.description" @change="saveException()" class="textarea textarea-bordered w-full" placeholder="e.g. Hardening baseline 2.3: SMBv1 must be disabled"></textarea>
+								</div>
+								<div class="col-span-6">
+									<label class="block text-sm font-medium mb-2"><i x-show="!selectedException.justification" class="ti ti-alert-triangle text-warning mr-1"></i>Justification - why it can not be met</label>
+									<textarea rows="3" x-model="selectedException.justification" @change="saveException()" class="textarea textarea-bordered w-full" placeholder="Business reason, technical limitation, vendor dependency ..."></textarea>
+								</div>
+								<div class="col-span-6">
+									<label class="block text-sm font-medium mb-2">Compensating controls</label>
+									<textarea rows="3" x-model="selectedException.compensating_controls" @change="saveException()" class="textarea textarea-bordered w-full" placeholder="What is done instead to reduce the risk (segmentation, extra logging, ...)"></textarea>
+								</div>
+							</div>
+						</div>
+					</div>
+					</fieldset>
+				</div>
+
+				<!-- Approval -->
+				<div x-show="excTab==='approval'" class="card">
+					<div class="grid grid-cols-12 gap-6">
+						<div class="col-span-5">
+							<table class="table table-sm">
+								<tbody>
+									<tr><td class="font-semibold">Requested by</td><td x-text="selectedException.requested_by_email || '-'"></td></tr>
+									<tr><td class="font-semibold">Submitted</td><td x-text="selectedException.submitted_date || '-'"></td></tr>
+									<tr><td class="font-semibold">Decided by</td><td x-text="selectedException.decided_by_email || '-'"></td></tr>
+									<tr><td class="font-semibold">Decided</td><td x-text="selectedException.decided_date || '-'"></td></tr>
+									<tr><td class="font-semibold">Decision note</td><td class="italic" x-text="selectedException.decision_note || '-'"></td></tr>
+									<tr><td class="font-semibold">Valid</td><td x-text="(selectedException.valid_from || 'from approval') + ' - ' + (selectedException.expiry_date || '?')"></td></tr>
+									<tr x-show="selectedException.closed_date"><td class="font-semibold">Closed</td><td x-text="selectedException.closed_date"></td></tr>
+								</tbody>
+							</table>
+						</div>
+						<div class="col-span-7">
+							<div x-show="['draft', 'rejected'].includes(selectedException.status) && selectedException.missing_for_submit && selectedException.missing_for_submit.length" role="alert" class="alert bg-base-100 mb-4 text-sm">
+								<i class="ti ti-list-check text-warning"></i>
+								<span>Fill in before submitting: <span class="font-semibold" x-text="selectedException.missing_for_submit.join(', ').replace('expiry_date', 'expiry date').replace('risk', 'likelihood and impact').replace('assignee', 'owner')"></span></span>
+							</div>
+							<label class="block text-sm font-medium mb-2">Note</label>
+							<textarea rows="3" x-model="excDecisionNote" class="textarea textarea-bordered w-full" placeholder="Optional note for the history (required when rejecting)"></textarea>
+							<div class="flex flex-wrap gap-2 mt-4">
+								<button x-show="['draft', 'rejected'].includes(selectedException.status) && selectedException.can_edit" :disabled="excBusy || (selectedException.missing_for_submit || []).length > 0" @click="excAction('submit')" class="btn btn-sm btn-primary"><i class="ti ti-send"></i>Submit for approval</button>
+								<button x-show="excCanDecide(selectedException)" :disabled="excBusy" @click="excAction('approve')" class="btn btn-sm btn-success"><i class="ti ti-check"></i>Approve</button>
+								<button x-show="excCanDecide(selectedException)" :disabled="excBusy" @click="excAction('reject', true)" class="btn btn-sm btn-error"><i class="ti ti-x"></i>Reject</button>
+								<button x-show="selectedException.status !== 'closed' && selectedException.can_manage" :disabled="excBusy" @click="excAction('close')" class="btn btn-sm bg-base-100"><i class="ti ti-archive"></i>Close (deviation fixed)</button>
+								<button x-show="selectedException.status === 'closed' && selectedException.can_manage" :disabled="excBusy" @click="excAction('reopen')" class="btn btn-sm bg-base-100"><i class="ti ti-arrow-back-up"></i>Reopen</button>
+								<button x-show="selectedException.can_manage" @click="showDeleteExceptionModal=true" class="btn btn-sm btn-ghost text-error ml-auto"><i class="ti ti-trash"></i>Delete</button>
+							</div>
+							<p class="text-xs opacity-70 mt-4">
+								Approval: project manager, risk manager or admin, never the person who requested it.
+								An approved exception that is changed (assessment, dates, justification) has to be approved again.
+							</p>
+						</div>
+					</div>
+				</div>
+
+				<!-- Linked to -->
+				<div x-show="excTab==='links'" class="card">
+					<h3 class="font-semibold mb-2">Controls</h3>
+					<div x-show="excLinksLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+					<div x-show="!excLinksLoading && excLinks.length===0" class="text-sm opacity-70 mb-6">Not linked to any control. Link it from a sub-control (Exceptions tab in the control drawer).</div>
+					<table x-show="!excLinksLoading && excLinks.length>0" class="table table-sm mb-6">
+						<thead><tr><th>Project</th><th>Framework</th><th>Control</th></tr></thead>
+						<tbody>
+							<template x-for="link in excLinks" :key="link.id">
+								<tr>
+									<td x-text="link.project"></td>
+									<td x-text="link.framework"></td>
+									<td><a :href="link.url" class="underline hover:opacity-75"><span class="font-semibold" x-text="link.ref_code"></span> <span x-text="link.name"></span></a></td>
+								</tr>
+							</template>
+						</tbody>
+					</table>
+
+					<h3 class="font-semibold mb-2">Risks</h3>
+					<div x-show="!(selectedException.risks || []).length" class="text-sm opacity-70 mb-2">No risk linked. Optional - link a risk when the exception is part of a larger, accepted risk.</div>
+					<table x-show="(selectedException.risks || []).length" class="table table-sm mb-2">
+						<thead><tr><th>Risk</th><th>Level</th><th>Status</th><th class="w-1"></th></tr></thead>
+						<tbody>
+							<template x-for="risk in selectedException.risks" :key="risk.id">
+								<tr>
+									<td><a @click="openRiskFromException(risk)" class="underline hover:cursor-pointer hover:opacity-75" x-text="risk.title"></a></td>
+									<td><span :class="excLevelClass(risk.risk)" class="px-2 rounded-lg uppercase text-ss text-white" x-text="risk.risk"></span></td>
+									<td class="text-xs" x-text="risk.status"></td>
+									<td><button x-show="!excReadOnly(selectedException)" @click="unlinkRiskFromException(risk.id)" title="Unlink" class="btn btn-xs"><i class="ti ti-trash text-error"></i></button></td>
+								</tr>
+							</template>
+						</tbody>
+					</table>
+					<div x-show="!excReadOnly(selectedException)" class="flex gap-2 mt-2">
+						<select x-model="excRiskToAdd" class="select select-sm select-bordered flex-1">
+							<option value="">Link a risk from the risk register ...</option>
+							<template x-for="risk in excAvailableRisks()" :key="risk.id">
+								<option :value="risk.id" x-text="risk.title + ' (' + risk.risk + ')'"></option>
+							</template>
+						</select>
+						<button :disabled="!excRiskToAdd" @click="linkRiskToException" class="btn btn-sm btn-primary">Link</button>
+					</div>
+				</div>
+
+				<!-- Comments -->
+				<div x-show="excTab==='comments'" class="flex-1 overflow-y-auto">
+					<div x-show="excMessages.length===0" class="text-center py-10">
+						<h1 class="text-2xl font-semibold">No Comments</h1>
+						<p class="py-6">There are no comments yet.</p>
+					</div>
+					<template x-for="message in excMessages" :key="message.id">
+						<div :class='{"chat-start": message.author_email === $store.currentUser.email, "chat-end": message.author_email !== $store.currentUser.email}' class="chat">
+							<div class="chat-image avatar placeholder">
+								<div class="bg-base-300 rounded-full w-8"><span class="text-xs uppercase" x-text="message.author_email[0]"></span></div>
+							</div>
+							<div class="chat-header mb-2">
+								<span class="text-xs opacity-50 mr-1" x-text="simpleDate(message.date_added)"></span>
+								<p class="font-normal" x-text="message.author_email"></p>
+							</div>
+							<div class="chat-bubble" x-text="message.message"></div>
+						</div>
+					</template>
+				</div>
+
+				<!-- History -->
+				<div x-show="excTab==='history'" class="card">
+					<div x-show="excHistoryLoading" class="text-center py-6"><span class="loading loading-dots loading-lg"></span></div>
+					<table x-show="!excHistoryLoading && excHistory.length>0" class="table table-sm">
+						<thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+						<tbody>
+							<template x-for="entry in excHistory" :key="entry.id">
+								<tr>
+									<td class="whitespace-nowrap text-xs" x-text="entry.date_added"></td>
+									<td class="text-xs" x-text="entry.user_email || '-'"></td>
+									<td class="text-xs">
+										<span class="badge badge-sm mr-1 capitalize" x-show="entry.event !== 'updated' && entry.event !== 'created'" x-text="entry.event"></span>
+										<template x-for="line in describeExcChange(entry)"><div x-text="line"></div></template>
+										<div x-show="entry.note" class="italic opacity-70" x-text="entry.note"></div>
+									</td>
+								</tr>
+							</template>
+						</tbody>
+					</table>
+				</div>
+			</div>
+
+			<!-- Footer -->
+			<div class="border-t border-base-300 py-4" x-show="excTab==='comments' && selectedException.can_edit">
+				<div class="relative flex">
+					<input x-model="excMessage" @keyup.enter="createExceptionMessage()" type="text" placeholder="Write your message!" class="w-full input-md border border-base-100 bg-base-300 focus:outline-none pl-6 rounded-md py-3">
+					<div class="absolute right-0 items-center inset-y-0 hidden sm:flex">
+						<button @click="createExceptionMessage()" :class='{"btn-disabled": !excMessage}' class="btn btn-sm btn-success"><span class="font-bold">Send</span></button>
+					</div>
+				</div>
+			</div>
+
+			</div>
+			</template>
+		</div>
+	</div>
+</div>

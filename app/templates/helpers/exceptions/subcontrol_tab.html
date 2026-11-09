@@ -1,0 +1,63 @@
+{# "Exceptions" tab in the sub-control drawer - same layout as the Risks tab #}
+<div x-show="activeSubSideTab==='exceptions'" class="card p-4">
+	<div class="overflow-auto">
+		<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!(selectedSubControl?.exceptions || []).length">
+			<div class="hero w-full h-full">
+				<div class="hero-content text-center flex flex-col justify-center w-full h-full">
+					<div class="max-w-md mx-auto">
+						<h1 class="text-2xl font-bold">No Exceptions</h1>
+						<p class="py-6">
+							No exceptions have been linked to this subcontrol. Use an exception when the
+							requirement can not be met for some systems, for a limited time and with approval.
+						</p>
+						<div class="flex flex-row gap-x-4 justify-center">
+							<button class="btn btn-sm bg-base-100" @click="openAttachException()">Attach Exception</button>
+							<button class="btn btn-sm btn-primary" @click="openCreateException(true)">Create Exception</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div x-show="(selectedSubControl?.exceptions || []).length">
+			<div class="flex justify-between mb-2">
+				<h1 class="text-2xl font-semibold">Exceptions</h1>
+				<div class="flex flex-row gap-x-2">
+					<button class="btn btn-sm bg-base-100" @click="openAttachException()">Attach Exception</button>
+					<button class="btn btn-sm btn-primary" @click="openCreateException(true)">Create Exception</button>
+				</div>
+			</div>
+			<div class="overflow-x-auto">
+				<table class="table bg-base-100">
+					<thead>
+						<tr>
+							<th class="w-1 py-6"></th>
+							<th>Title</th>
+							<th>State</th>
+							<th>Level</th>
+							<th>Expires</th>
+							<th class="w-2 text-center">Actions</th>
+						</tr>
+					</thead>
+					<tbody>
+						<template x-for="item in (selectedSubControl?.exceptions || [])" :key="item.id">
+							<tr>
+								<th></th>
+								<td @click="openExceptionFromSubControl(item)" class="underline hover:cursor-pointer hover:opacity-75" x-text="item.title"></td>
+								<td><span :class="excStateClass(item.state)" class="pill whitespace-nowrap" x-text="excStateLabels[item.state]"></span></td>
+								<td><span :class="excLevelClass(item.risk)" class="pill" x-text="item.risk"></span></td>
+								<td class="text-xs whitespace-nowrap" :class="{'text-error font-semibold': item.state==='expired'}" x-text="excExpiryText(item)"></td>
+								<td>
+									<div class="flex flex-row gap-x-2">
+										<button @click="openExceptionFromSubControl(item)" title="Open exception" class="btn btn-xs"><i class="ti ti-arrow-right"></i></button>
+										<button @click="removeExceptionId=item.id;showRemoveExceptionModal=true" title="Remove from subcontrol" class="btn btn-xs"><i class="ti ti-trash text-error"></i></button>
+									</div>
+								</td>
+							</tr>
+						</template>
+					</tbody>
+				</table>
+			</div>
+		</div>
+	</div>
+</div>

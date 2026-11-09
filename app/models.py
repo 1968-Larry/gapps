@@ -723,6 +723,12 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
     risks = db.relationship(
         "RiskRegister", backref="tenant", lazy="dynamic", cascade="all, delete-orphan"
     )
+    exceptions = db.relationship(
+        "PolicyException",
+        backref="tenant",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
     owner_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=False)
     labels = db.relationship(
         "PolicyLabel", backref="tenant", lazy="dynamic", cascade="all, delete-orphan"
@@ -2340,6 +2346,12 @@ class Project(db.Model, DateMixin):
     risks = db.relationship(
         "RiskRegister", backref="project", lazy="dynamic", cascade="all, delete-orphan"
     )
+    exceptions = db.relationship(
+        "PolicyException",
+        backref="project",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
     owner_id = db.Column(db.String(), db.ForeignKey("users.id"), nullable=False)
     tenant_id = db.Column(db.String, db.ForeignKey("tenants.id"), nullable=False)
     framework_id = db.Column(db.String, db.ForeignKey("frameworks.id"))
@@ -2683,6 +2695,34 @@ class Project(db.Model, DateMixin):
         db.session.add(risk)
         db.session.commit()
         return risk
+
+    def create_exception(self, data, requested_by=None):
+        """New exception (status draft) in this project, from a dict of fields."""
+        if not (data.get("title") or "").strip():
+            abort(400, "The exception needs a title")
+        exc = PolicyException(
+            title=data["title"].strip(),
+            requested_by=requested_by,
+            assignee=self.validate_risk_assignee(data.get("assignee")),
+            project_id=self.id,
+            tenant_id=self.tenant_id,
+            status="draft",
+        )
+        for field in PolicyException.EDITABLE_FIELDS:
+            if field == "title" or field not in data:
+                continue
+            value = data.get(field)
+            if isinstance(value, str) and field not in PolicyException.DATE_FIELDS:
+                value = value.strip()
+            setattr(exc, field, value if value not in ("",) else None)
+        if exc.risk is None:
+            exc.risk = "unknown"
+        db.session.add(exc)
+        db.session.commit()
+        return exc
+
+    def exception_summary(self):
+        return PolicyException.summarize(self.exceptions.all())
 
     def review_summary(self):
         data = {"total": 0}
@@ -3423,6 +3463,106 @@ class ProjectComment(db.Model):
         return data
 
 
+
+# --------------------------------------------------------------------------- #
+# Shared by risks and exceptions: the 4x4 assessment and the change history.
+# --------------------------------------------------------------------------- #
+class AssessmentMixin(object):
+    """
+    likelihood x impact (1-4 each) -> level, stored in the `risk` column.
+    Levels: 1-2 very low, 3-6 low, 8-9 high, 12-16 very high.
+    """
+
+    LEVELS = ["very low", "low", "high", "very high"]
+
+    @staticmethod
+    def level_for_score(score):
+        """likelihood x impact -> risk level (4x4 matrix)"""
+        if score <= 2:
+            return "very low"
+        if score <= 6:
+            return "low"
+        if score <= 9:
+            return "high"
+        return "very high"
+
+    def score(self):
+        if self.likelihood and self.impact:
+            return self.likelihood * self.impact
+        return None
+
+    def recalculate_risk(self):
+        score = self.score()
+        if score is not None:
+            self.risk = self.level_for_score(score)
+
+    @validates("likelihood", "impact")
+    def _validate_scale(self, key, value):
+        if value in (None, ""):
+            return None
+        try:
+            value = int(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid {key}: {value}")
+        if value < 1 or value > 4:
+            raise ValueError(f"Invalid {key}: {value} (must be 1-4)")
+        return value
+
+
+class HistoryMixin(object):
+    """
+    Change history written from ORM events. The model sets:
+      TRACKED_FIELDS  fields whose changes are written to the history
+      HISTORY_MODEL   name of the history model (one row per change)
+      HISTORY_FK      column in the history model that points to the record
+    """
+
+    TRACKED_FIELDS = ()
+    HISTORY_MODEL = None
+    HISTORY_FK = None
+
+    @staticmethod
+    def _plain(value):
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return value
+
+    def snapshot(self):
+        return {f: self._plain(getattr(self, f)) for f in self.TRACKED_FIELDS}
+
+    def tracked_changes(self):
+        """{field: [old, new]} for the tracked fields changed in this flush."""
+        from sqlalchemy import inspect as sa_inspect
+
+        state = sa_inspect(self)
+        changes = {}
+        for field in self.TRACKED_FIELDS:
+            hist = state.attrs[field].history
+            if not hist.has_changes():
+                continue
+            old = hist.deleted[0] if hist.deleted else None
+            new = getattr(self, field)
+            if self._plain(old) != self._plain(new):
+                changes[field] = [self._plain(old), self._plain(new)]
+        return changes
+
+    def add_history(self, event, changes=None, note=None):
+        """Explicit history entry (in the session, committed by the caller)."""
+        model = globals()[self.HISTORY_MODEL]
+        user_id, user_email = _history_actor()
+        entry = model(
+            event=event,
+            note=(note or "").strip() or None,
+            changes=changes or {},
+            snapshot=self.snapshot(),
+            user_id=user_id,
+            user_email=user_email,
+        )
+        setattr(entry, self.HISTORY_FK, self.id)
+        db.session.add(entry)
+        return entry
+
+
 class RiskComment(db.Model):
     __tablename__ = "risk_comments"
     id = db.Column(
@@ -3444,7 +3584,7 @@ class RiskComment(db.Model):
         return data
 
 
-class RiskRegister(db.Model):
+class RiskRegister(db.Model, AssessmentMixin, HistoryMixin):
     __tablename__ = "risk_register"
     __table_args__ = (db.UniqueConstraint("title", "tenant_id"),)
     id = db.Column(
@@ -3515,27 +3655,6 @@ class RiskRegister(db.Model):
     ALLOWED_PRIORITY = ["unknown", "low", "moderate", "high"]
     ALLOWED_STATUS = ["new", "in_progress", "accepted", "mitigated"]
 
-    @staticmethod
-    def level_for_score(score):
-        """likelihood x impact -> risk level (4x4 matrix)"""
-        if score <= 2:
-            return "very low"
-        if score <= 6:
-            return "low"
-        if score <= 9:
-            return "high"
-        return "very high"
-
-    def score(self):
-        if self.likelihood and self.impact:
-            return self.likelihood * self.impact
-        return None
-
-    def recalculate_risk(self):
-        score = self.score()
-        if score is not None:
-            self.risk = self.level_for_score(score)
-
     @validates("review_date", "due_date")
     def _validate_date(self, key, value):
         if value in (None, ""):
@@ -3549,18 +3668,6 @@ class RiskRegister(db.Model):
         except ValueError:
             raise ValueError(f"Invalid {key}: {value} (use YYYY-MM-DD)")
 
-    @validates("likelihood", "impact")
-    def _validate_scale(self, key, value):
-        if value in (None, ""):
-            return None
-        try:
-            value = int(value)
-        except (TypeError, ValueError):
-            raise ValueError(f"Invalid {key}: {value}")
-        if value < 1 or value > 4:
-            raise ValueError(f"Invalid {key}: {value} (must be 1-4)")
-        return value
-
     CLOSED_STATUSES = ("mitigated", "accepted")
     # fields whose changes are written to the history
     TRACKED_FIELDS = (
@@ -3573,6 +3680,8 @@ class RiskRegister(db.Model):
         "review_date",
         "due_date",
     )
+    HISTORY_MODEL = "RiskHistory"
+    HISTORY_FK = "risk_id"
     DEFAULT_REVIEW_INTERVALS = "very high=3,high=6,low=12,very low=12"
     DATE_FIELDS = ("review_date", "due_date", "closed_date", "last_reviewed")
 
@@ -3615,15 +3724,6 @@ class RiskRegister(db.Model):
         else:
             self.closed_date = None
 
-    @staticmethod
-    def _plain(value):
-        if hasattr(value, "isoformat"):
-            return value.isoformat()
-        return value
-
-    def snapshot(self):
-        return {f: self._plain(getattr(self, f)) for f in self.TRACKED_FIELDS}
-
     def mark_reviewed(self, note=None):
         """Record that the risk has been reassessed and schedule the next review."""
         today = datetime.utcnow().date()
@@ -3632,23 +3732,13 @@ class RiskRegister(db.Model):
         new_review = self.next_review_date(self.risk, today)
         if new_review:
             self.review_date = new_review
-        user_id, user_email = _history_actor()
         self._skip_history = True  # explicit entry below
-        db.session.add(
-            RiskHistory(
-                risk_id=self.id,
-                event="reviewed",
-                note=(note or "").strip() or None,
-                changes={
-                    "review_date": [
-                        self._plain(old_review),
-                        self._plain(self.review_date),
-                    ]
-                },
-                snapshot=self.snapshot(),
-                user_id=user_id,
-                user_email=user_email,
-            )
+        self.add_history(
+            "reviewed",
+            changes={
+                "review_date": [self._plain(old_review), self._plain(self.review_date)]
+            },
+            note=note,
         )
         db.session.commit()
         self._skip_history = False
@@ -3817,17 +3907,21 @@ class RiskReminder(db.Model):
 
 
 def _write_history(connection, target, event, changes):
+    """History row for any HistoryMixin model, written inside the flush."""
     user_id, user_email = _history_actor()
+    table = globals()[target.HISTORY_MODEL].__table__
     connection.execute(
-        RiskHistory.__table__.insert().values(
-            id=str(shortuuid.ShortUUID().random(length=8)).lower(),
-            risk_id=target.id,
-            event=event,
-            changes=changes,
-            snapshot=target.snapshot(),
-            user_id=user_id,
-            user_email=user_email,
-            date_added=datetime.utcnow(),
+        table.insert().values(
+            **{
+                "id": str(shortuuid.ShortUUID().random(length=8)).lower(),
+                target.HISTORY_FK: target.id,
+                "event": event,
+                "changes": changes,
+                "snapshot": target.snapshot(),
+                "user_id": user_id,
+                "user_email": user_email,
+                "date_added": datetime.utcnow(),
+            }
         )
     )
 
@@ -3867,15 +3961,7 @@ def _risk_before_update(mapper, connection, target):
     if getattr(target, "_skip_history", False):
         target._skip_history = False
         return
-    changes = {}
-    for field in RiskRegister.TRACKED_FIELDS:
-        hist = state.attrs[field].history
-        if not hist.has_changes():
-            continue
-        old = hist.deleted[0] if hist.deleted else None
-        new = getattr(target, field)
-        if RiskRegister._plain(old) != RiskRegister._plain(new):
-            changes[field] = [RiskRegister._plain(old), RiskRegister._plain(new)]
+    changes = target.tracked_changes()
     if changes:
         try:
             _write_history(connection, target, "updated", changes)
@@ -3883,6 +3969,722 @@ def _risk_before_update(mapper, connection, target):
             logging.getLogger(__name__).debug(
                 "risk history (update) failed", exc_info=True
             )
+
+
+# --------------------------------------------------------------------------- #
+# Exceptions (deviations from a control / policy / hardening requirement)
+#
+# Same building blocks as risks (4x4 assessment, history, comments, reminders,
+# links to sub-controls) plus an approval flow and an expiry date:
+#
+#   draft -> submitted -> approved -> (expires) -> closed
+#                      -> rejected -> (edit) -> submitted
+#
+# "active" and "expired" are not stored: an approved exception is active until
+# its expiry date and expired after it (see `state`).
+# --------------------------------------------------------------------------- #
+class ExceptionAssociation(db.Model):
+    """Exception <-> project sub-control (many-to-many)."""
+
+    __tablename__ = "exception_association"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    control_id = db.Column(
+        db.String(), db.ForeignKey("project_subcontrols.id", ondelete="CASCADE")
+    )
+    exception_id = db.Column(
+        db.String(), db.ForeignKey("policy_exceptions.id", ondelete="CASCADE")
+    )
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    @staticmethod
+    def exists(control_id, exception_id):
+        return (
+            ExceptionAssociation.query.filter(
+                ExceptionAssociation.control_id == control_id
+            )
+            .filter(ExceptionAssociation.exception_id == exception_id)
+            .first()
+        )
+
+    @staticmethod
+    def add(control_ids, exception_id, commit=True):
+        if not isinstance(control_ids, list):
+            control_ids = [control_ids]
+        for control_id in control_ids:
+            if not ExceptionAssociation.exists(control_id, exception_id):
+                db.session.add(
+                    ExceptionAssociation(control_id=control_id, exception_id=exception_id)
+                )
+        if commit:
+            db.session.commit()
+        return True
+
+    @staticmethod
+    def remove(control_ids, exception_id, commit=True):
+        if not isinstance(control_ids, list):
+            control_ids = [control_ids]
+        for control_id in control_ids:
+            if assoc := ExceptionAssociation.exists(control_id, exception_id):
+                db.session.delete(assoc)
+        if commit:
+            db.session.commit()
+        return True
+
+
+class ExceptionRiskAssociation(db.Model):
+    """Exception <-> risk (many-to-many, optional)."""
+
+    __tablename__ = "exception_risk_association"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    exception_id = db.Column(
+        db.String(), db.ForeignKey("policy_exceptions.id", ondelete="CASCADE")
+    )
+    risk_id = db.Column(
+        db.String(), db.ForeignKey("risk_register.id", ondelete="CASCADE")
+    )
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def exists(exception_id, risk_id):
+        return (
+            ExceptionRiskAssociation.query.filter(
+                ExceptionRiskAssociation.exception_id == exception_id
+            )
+            .filter(ExceptionRiskAssociation.risk_id == risk_id)
+            .first()
+        )
+
+
+class ExceptionComment(db.Model):
+    __tablename__ = "exception_comments"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    message = db.Column(db.String())
+    owner_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=False)
+    exception_id = db.Column(
+        db.String, db.ForeignKey("policy_exceptions.id"), nullable=False
+    )
+    tenant_id = db.Column(db.String, db.ForeignKey("tenants.id"), nullable=False)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    def as_dict(self):
+        data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        data["author_email"] = User.query.get(self.owner_id).email
+        return data
+
+
+class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
+    __tablename__ = "policy_exceptions"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    title = db.Column(db.String, nullable=False)
+    description = db.Column(db.String)
+    # why the requirement can not be met
+    justification = db.Column(db.String)
+    # what is done instead to reduce the risk
+    compensating_controls = db.Column(db.String)
+    # systems / assets / groups the exception covers (free text)
+    affected_assets = db.Column(db.String)
+    # 4x4 assessment (AssessmentMixin): level in "risk"
+    risk = db.Column(db.String, default="unknown", nullable=False)
+    likelihood = db.Column(db.Integer, nullable=True)
+    impact = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String, default="draft", nullable=False)
+    ticket_number = db.Column(db.String, nullable=True)
+    # owner of the exception (responsible for it until it is closed)
+    assignee = db.Column(db.String, db.ForeignKey("users.id"))
+    requested_by = db.Column(db.String, db.ForeignKey("users.id"))
+    submitted_date = db.Column(db.Date, nullable=True)
+    decided_by = db.Column(db.String, db.ForeignKey("users.id"))
+    decided_date = db.Column(db.Date, nullable=True)
+    decision_note = db.Column(db.String)
+    valid_from = db.Column(db.Date, nullable=True)
+    expiry_date = db.Column(db.Date, nullable=True)
+    closed_date = db.Column(db.Date, nullable=True)
+    comments = db.relationship(
+        "ExceptionComment",
+        backref="exception",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    history = db.relationship(
+        "ExceptionHistory",
+        backref="exception",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    reminders = db.relationship(
+        "ExceptionReminder",
+        backref="exception",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+    risks = db.relationship(
+        "RiskRegister",
+        secondary="exception_risk_association",
+        lazy="dynamic",
+        backref=db.backref("exceptions", lazy="dynamic"),
+    )
+    project_id = db.Column(db.String, db.ForeignKey("projects.id"), nullable=True)
+    tenant_id = db.Column(db.String, db.ForeignKey("tenants.id"), nullable=False)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
+    ALLOWED_RISKS = ["unknown", "very low", "low", "high", "very high"]
+    ALLOWED_STATUS = ["draft", "submitted", "approved", "rejected", "closed"]
+    # status values that can still be edited freely
+    EDITABLE_STATUSES = ("draft", "submitted", "rejected")
+    TRACKED_FIELDS = (
+        "status",
+        "likelihood",
+        "impact",
+        "risk",
+        "assignee",
+        "valid_from",
+        "expiry_date",
+    )
+    HISTORY_MODEL = "ExceptionHistory"
+    HISTORY_FK = "exception_id"
+    DATE_FIELDS = (
+        "valid_from",
+        "expiry_date",
+        "submitted_date",
+        "decided_date",
+        "closed_date",
+    )
+    # fields set through update(); status only changes through the actions
+    EDITABLE_FIELDS = (
+        "title",
+        "description",
+        "justification",
+        "compensating_controls",
+        "affected_assets",
+        "likelihood",
+        "impact",
+        "risk",
+        "ticket_number",
+        "valid_from",
+        "expiry_date",
+    )
+    # a change to one of these on an approved exception needs a new approval
+    MATERIAL_FIELDS = (
+        "justification",
+        "compensating_controls",
+        "affected_assets",
+        "likelihood",
+        "impact",
+        "risk",
+        "valid_from",
+        "expiry_date",
+    )
+    DEFAULT_MAX_VALIDITY_MONTHS = 12
+    DEFAULT_EXPIRING_SOON_DAYS = 30
+
+    # -- settings ------------------------------------------------------------
+    @staticmethod
+    def _config(key, default):
+        try:
+            value = current_app.config.get(key)
+        except RuntimeError:
+            value = None
+        return default if value in (None, "") else value
+
+    @staticmethod
+    def max_validity_months():
+        """EXCEPTION_MAX_VALIDITY_MONTHS (0 = no limit)"""
+        try:
+            return int(
+                PolicyException._config(
+                    "EXCEPTION_MAX_VALIDITY_MONTHS",
+                    PolicyException.DEFAULT_MAX_VALIDITY_MONTHS,
+                )
+            )
+        except (TypeError, ValueError):
+            return PolicyException.DEFAULT_MAX_VALIDITY_MONTHS
+
+    @staticmethod
+    def expiring_soon_days():
+        try:
+            return int(
+                PolicyException._config(
+                    "EXCEPTION_EXPIRING_SOON_DAYS",
+                    PolicyException.DEFAULT_EXPIRING_SOON_DAYS,
+                )
+            )
+        except (TypeError, ValueError):
+            return PolicyException.DEFAULT_EXPIRING_SOON_DAYS
+
+    @staticmethod
+    def self_approval_allowed():
+        value = PolicyException._config("EXCEPTION_ALLOW_SELF_APPROVAL", False)
+        return str(value).lower() in ("1", "true", "yes")
+
+    @staticmethod
+    def settings():
+        return {
+            "max_validity_months": PolicyException.max_validity_months(),
+            "expiring_soon_days": PolicyException.expiring_soon_days(),
+            "self_approval_allowed": PolicyException.self_approval_allowed(),
+        }
+
+    # -- validation ------------------------------------------------------------
+    @validates("valid_from", "expiry_date")
+    def _validate_date(self, key, value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, datetime):
+            return value.date()
+        if hasattr(value, "isoformat"):
+            return value
+        try:
+            return datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"Invalid {key}: {value} (use YYYY-MM-DD)")
+
+    @validates("status")
+    def _validate_status(self, key, value):
+        value = value or "draft"
+        if value not in self.ALLOWED_STATUS:
+            raise ValueError(f"Invalid status: {value}")
+        return value
+
+    @validates("risk")
+    def _validate_risk(self, key, value):
+        value = value or "unknown"
+        if value not in self.ALLOWED_RISKS:
+            raise ValueError(f"Invalid risk: {value}")
+        return value
+
+    # -- state -----------------------------------------------------------------
+    def state(self, today=None):
+        """draft / submitted / rejected / active / expired / closed"""
+        today = today or datetime.utcnow().date()
+        if self.status == "approved":
+            if self.expiry_date and self.expiry_date < today:
+                return "expired"
+            return "active"
+        return self.status
+
+    def days_left(self, today=None):
+        if not self.expiry_date:
+            return None
+        today = today or datetime.utcnow().date()
+        return (self.expiry_date - today).days
+
+    def is_expiring_soon(self, today=None):
+        if self.state(today) != "active":
+            return False
+        days = self.days_left(today)
+        return days is not None and days <= self.expiring_soon_days()
+
+    def missing_for_submit(self):
+        """Fields that must be filled in before the exception can be submitted."""
+        missing = []
+        if not (self.justification or "").strip():
+            missing.append("justification")
+        if not self.expiry_date:
+            missing.append("expiry_date")
+        if self.risk in (None, "", "unknown"):
+            missing.append("risk")
+        if not self.assignee:
+            missing.append("assignee")
+        return missing
+
+    def validate_expiry(self, today=None):
+        """abort(400) when the expiry date is in the past or too far away."""
+        today = today or datetime.utcnow().date()
+        if not self.expiry_date:
+            abort(400, "The exception needs an expiry date")
+        if self.expiry_date < today:
+            abort(400, "The expiry date has already passed")
+        if self.valid_from and self.valid_from > self.expiry_date:
+            abort(400, "Valid from must be before the expiry date")
+        months = self.max_validity_months()
+        if months > 0:
+            start = max(self.valid_from or today, today)
+            limit = arrow.get(start).shift(months=months).date()
+            if self.expiry_date > limit:
+                abort(
+                    400,
+                    f"An exception can be valid for at most {months} months "
+                    f"(latest expiry date {limit.isoformat()})",
+                )
+
+    # -- workflow ----------------------------------------------------------------
+    def _set_status(self, status, event, note=None):
+        old = self.status
+        self.status = status
+        self._skip_history = True  # one explicit entry instead of the automatic one
+        changes = self.tracked_changes()
+        changes["status"] = [old, status]
+        self.add_history(event, changes=changes, note=note)
+
+    def submit(self, user_id, note=None):
+        if self.status not in ("draft", "rejected"):
+            abort(400, f"A {self.state()} exception can not be submitted")
+        missing = self.missing_for_submit()
+        if missing:
+            abort(400, "Fill in before submitting: " + ", ".join(missing))
+        self.validate_expiry()
+        self.submitted_date = datetime.utcnow().date()
+        if not self.requested_by:
+            self.requested_by = user_id
+        self.decided_by = None
+        self.decided_date = None
+        self.decision_note = None
+        self._set_status("submitted", "submitted", note)
+        db.session.commit()
+        return self
+
+    def approve(self, user_id, note=None):
+        if self.status != "submitted":
+            abort(400, "Only a submitted exception can be approved")
+        if (
+            user_id
+            and user_id == self.requested_by
+            and not self.self_approval_allowed()
+        ):
+            abort(403, "You can not approve an exception you requested yourself")
+        missing = self.missing_for_submit()
+        if missing:
+            abort(400, "Missing before approval: " + ", ".join(missing))
+        self.validate_expiry()
+        today = datetime.utcnow().date()
+        if not self.valid_from:
+            self.valid_from = today
+        self.decided_by = user_id
+        self.decided_date = today
+        self.decision_note = (note or "").strip() or None
+        self._set_status("approved", "approved", note)
+        db.session.commit()
+        return self
+
+    def reject(self, user_id, note):
+        if self.status != "submitted":
+            abort(400, "Only a submitted exception can be rejected")
+        if not (note or "").strip():
+            abort(400, "Give a reason for the rejection")
+        self.decided_by = user_id
+        self.decided_date = datetime.utcnow().date()
+        self.decision_note = note.strip()
+        self._set_status("rejected", "rejected", note)
+        db.session.commit()
+        return self
+
+    def close(self, note=None):
+        """The deviation is fixed (or no longer needed)."""
+        if self.status == "closed":
+            abort(400, "The exception is already closed")
+        self.closed_date = datetime.utcnow().date()
+        self._set_status("closed", "closed", note)
+        db.session.commit()
+        return self
+
+    def reopen(self, note=None):
+        if self.status != "closed":
+            abort(400, "Only a closed exception can be reopened")
+        self.closed_date = None
+        self.decided_by = None
+        self.decided_date = None
+        self.decision_note = None
+        self._set_status("draft", "reopened", note)
+        db.session.commit()
+        return self
+
+    def update(self, data):
+        """
+        Update the editable fields from a dict. A material change on an approved
+        exception (expiry date, assessment, justification, ...) sends it back
+        to "submitted" so it is approved again.
+        """
+        if self.status == "closed":
+            abort(400, "A closed exception can not be changed, reopen it first")
+        changed = []
+        for field in self.EDITABLE_FIELDS:
+            if field not in data:
+                continue
+            value = data.get(field)
+            if isinstance(value, str) and field not in self.DATE_FIELDS:
+                value = value.strip()
+            if field == "ticket_number":
+                value = value or None
+            current = getattr(self, field)
+            setattr(self, field, value)
+            if self._plain(getattr(self, field)) != self._plain(current):
+                changed.append(field)
+        if self.likelihood and self.impact:
+            self.recalculate_risk()
+        material = [f for f in changed if f in self.MATERIAL_FIELDS]
+        if self.status == "approved" and material:
+            self.decided_by = None
+            self.decided_date = None
+            self.decision_note = None
+            self.submitted_date = datetime.utcnow().date()
+            self._set_status(
+                "submitted",
+                "resubmitted",
+                "Changed after approval: " + ", ".join(material),
+            )
+        db.session.commit()
+        return self
+
+    # -- links -------------------------------------------------------------------
+    def associate_with_risk(self, risk_ids):
+        if not isinstance(risk_ids, list):
+            risk_ids = [risk_ids]
+        for risk_id in risk_ids:
+            risk = RiskRegister.query.get(risk_id)
+            if not risk or risk.tenant_id != self.tenant_id:
+                abort(400, f"Risk:{risk_id} not found in this organisation")
+        for risk_id in risk_ids:
+            if not ExceptionRiskAssociation.exists(self.id, risk_id):
+                db.session.add(
+                    ExceptionRiskAssociation(exception_id=self.id, risk_id=risk_id)
+                )
+        db.session.commit()
+        return True
+
+    def disassociate_with_risk(self, risk_ids):
+        if not isinstance(risk_ids, list):
+            risk_ids = [risk_ids]
+        for risk_id in risk_ids:
+            if assoc := ExceptionRiskAssociation.exists(self.id, risk_id):
+                db.session.delete(assoc)
+        db.session.commit()
+        return True
+
+    def risk_summaries(self):
+        return [
+            {
+                "id": r.id,
+                "title": r.title,
+                "risk": r.risk,
+                "status": r.status,
+                "project_id": r.project_id,
+            }
+            for r in self.risks.all()
+        ]
+
+    # -- output --------------------------------------------------------------------
+    @staticmethod
+    def _email(user_id):
+        if not user_id:
+            return None
+        user = User.query.get(user_id)
+        return user.email if user else None
+
+    def summary(self, today=None):
+        """Short form, for lists on a sub-control or a risk."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "status": self.status,
+            "state": self.state(today),
+            "risk": self.risk,
+            "expiry_date": self._plain(self.expiry_date),
+            "days_left": self.days_left(today),
+            "project_id": self.project_id,
+        }
+
+    def as_dict(self, include_comments=True):
+        today = datetime.utcnow().date()
+        data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        for field in self.DATE_FIELDS:
+            data[field] = self._plain(data[field])
+        data["state"] = self.state(today)
+        data["days_left"] = self.days_left(today)
+        data["expiring_soon"] = self.is_expiring_soon(today)
+        data["score"] = self.score()
+        data["missing_for_submit"] = self.missing_for_submit()
+        data["requested_by_email"] = self._email(self.requested_by)
+        data["decided_by_email"] = self._email(self.decided_by)
+        data["assignee_email"] = self._email(self.assignee)
+        data["created_at"] = arrow.get(self.date_added).format("MMM D, YYYY")
+        data["date_added"] = self._plain(self.date_added)
+        data["date_updated"] = self._plain(self.date_updated)
+        if self.project_id:
+            data["project"] = self.project.name
+        data["risks"] = self.risk_summaries()
+        if include_comments:
+            data["comments"] = [c.as_dict() for c in self.comments.all()]
+        return data
+
+    @staticmethod
+    def summarize(exceptions, today=None):
+        """
+        Counts for a list of exceptions. Counted per level, never summed as scores:
+        "2 very high, one of them expired" is something you can act on.
+        """
+        today = today or datetime.utcnow().date()
+        levels = ["very high", "high", "low", "very low", "unknown"]
+        data = {
+            "total": 0,
+            "by_state": {
+                s: 0
+                for s in ("draft", "submitted", "rejected", "active", "expired", "closed")
+            },
+            "active_by_level": {level: 0 for level in levels},
+            "expired_by_level": {level: 0 for level in levels},
+            "expiring_soon": 0,
+            "expiring_soon_days": PolicyException.expiring_soon_days(),
+            "worst_active": None,
+        }
+        worst = None
+        for exc in exceptions:
+            data["total"] += 1
+            state = exc.state(today)
+            data["by_state"][state] = data["by_state"].get(state, 0) + 1
+            level = exc.risk if exc.risk in levels else "unknown"
+            if state == "active":
+                data["active_by_level"][level] += 1
+                if exc.is_expiring_soon(today):
+                    data["expiring_soon"] += 1
+                if level != "unknown" and (
+                    worst is None or levels.index(level) < levels.index(worst)
+                ):
+                    worst = level
+            elif state == "expired":
+                data["expired_by_level"][level] += 1
+        data["worst_active"] = worst
+        # open = still needs attention (everything that is not closed or rejected)
+        data["open"] = sum(
+            data["by_state"][s] for s in ("draft", "submitted", "active", "expired")
+        )
+        return data
+
+
+class ExceptionHistory(db.Model):
+    """One entry per change of an exception (who, when, what changed)."""
+
+    __tablename__ = "exception_history"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    exception_id = db.Column(
+        db.String,
+        db.ForeignKey("policy_exceptions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event = db.Column(db.String, nullable=False, default="updated")
+    changes = db.Column(db.JSON, default={})
+    snapshot = db.Column(db.JSON, default={})
+    note = db.Column(db.String)
+    user_id = db.Column(db.String)
+    user_email = db.Column(db.String)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def as_dict(self):
+        data = {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        data["date_added"] = (
+            self.date_added.strftime("%Y-%m-%d %H:%M") if self.date_added else None
+        )
+        return data
+
+
+class ExceptionReminder(db.Model):
+    """A reminder email that was sent for the expiry date of an exception."""
+
+    __tablename__ = "exception_reminders"
+    id = db.Column(
+        db.String,
+        primary_key=True,
+        default=lambda: str(shortuuid.ShortUUID().random(length=8)).lower(),
+        unique=True,
+    )
+    exception_id = db.Column(
+        db.String,
+        db.ForeignKey("policy_exceptions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind = db.Column(db.String, nullable=False)  # expiry
+    target_date = db.Column(db.Date, nullable=False)
+    sent_on = db.Column(db.Date, nullable=False)
+    recipients = db.Column(db.String)
+    date_added = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+@listens_for(PolicyException, "before_insert")
+def _exception_before_insert(mapper, connection, target):
+    target.recalculate_risk()
+
+
+@listens_for(PolicyException, "after_insert")
+def _exception_after_insert(mapper, connection, target):
+    try:
+        _write_history(connection, target, "created", target.snapshot())
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "exception history (insert) failed", exc_info=True
+        )
+
+
+@listens_for(PolicyException, "before_update")
+def _exception_before_update(mapper, connection, target):
+    target.recalculate_risk()
+    if getattr(target, "_skip_history", False):
+        target._skip_history = False
+        return
+    changes = target.tracked_changes()
+    if changes:
+        try:
+            _write_history(connection, target, "updated", changes)
+        except Exception:
+            logging.getLogger(__name__).debug(
+                "exception history (update) failed", exc_info=True
+            )
+
+
+def bulk_exception_links(exception_ids, can_access=None):
+    """{exception_id: [sub-control link info, ...]}, like bulk_risk_links."""
+    result = {}
+    if not exception_ids:
+        return result
+    rows = (
+        db.session.query(ExceptionAssociation.exception_id, ProjectSubControl)
+        .join(
+            ProjectSubControl,
+            ProjectSubControl.id == ExceptionAssociation.control_id,
+        )
+        .filter(ExceptionAssociation.exception_id.in_(list(exception_ids)))
+        .all()
+    )
+    allowed = {}
+    for exception_id, subcontrol in rows:
+        project = subcontrol.p_control.project
+        if can_access is not None:
+            if project.id not in allowed:
+                allowed[project.id] = bool(can_access(project))
+            if not allowed[project.id]:
+                continue
+        result.setdefault(exception_id, []).append(subcontrol_link_info(subcontrol))
+    for links in result.values():
+        links.sort(key=lambda x: (x["project"], x["framework"], x["ref_code"] or ""))
+    return result
 
 
 class ProjectSubControl(db.Model, SubControlMixin):
@@ -3925,6 +4727,15 @@ class ProjectSubControl(db.Model, SubControlMixin):
     risks = db.relationship(
         "RiskRegister",
         secondary="risk_association",
+        lazy="dynamic",
+        backref=db.backref("project_subcontrols", lazy="dynamic"),
+    )
+    """
+    may have multiple exceptions (deviations) tied to each control
+    """
+    exceptions = db.relationship(
+        "PolicyException",
+        secondary="exception_association",
         lazy="dynamic",
         backref=db.backref("project_subcontrols", lazy="dynamic"),
     )
@@ -3980,6 +4791,28 @@ class ProjectSubControl(db.Model, SubControlMixin):
 
         for record in risk_id:
             RiskAssociation.remove(self.id, record)
+        return True
+
+    def associate_with_exception(self, exception_id):
+        if isinstance(exception_id, str):
+            exception_id = [exception_id]
+        project = self.project
+        # validate all first, so a bad id never leaves a half-done change behind
+        for record in exception_id:
+            exc = PolicyException.query.get(record)
+            if not exc or exc.tenant_id != project.tenant_id:
+                abort(400, f"Exception:{record} not found in this organisation")
+        for record in exception_id:
+            ExceptionAssociation.add(self.id, record, commit=False)
+        db.session.commit()
+        return True
+
+    def disassociate_with_exception(self, exception_id):
+        if isinstance(exception_id, str):
+            exception_id = [exception_id]
+        for record in exception_id:
+            ExceptionAssociation.remove(self.id, record, commit=False)
+        db.session.commit()
         return True
 
     def update(

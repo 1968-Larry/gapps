@@ -1,0 +1,35 @@
+{# Exceptions strip on the project summary tab #}
+<div class="col-span-8 border bg-base-200 border-base-200 rounded-lg" x-show="excSummary && excSummary.total > 0">
+	<div class="p-6">
+		<div class="flex justify-between">
+			<div class="flex items-center gap-x-2 tooltip" data-tip="Approved deviations from controls, counted per level">
+				<p class="text-sm font-semibold">Exceptions</p>
+				<i class="ti ti-shield-half"></i>
+			</div>
+			<button @click="switchTab({'tab':'exceptions'})" class="btn btn-sm btn-ghost"><i class="ti ti-external-link my-auto"></i></button>
+		</div>
+		<div class="grid grid-cols-4 gap-4 mt-2">
+			<div class="hover:cursor-pointer" @click="excFilter = {state: 'active', risk: null}; switchTab({'tab':'exceptions'})">
+				<div class="text-xs opacity-70">Active</div>
+				<div class="text-2xl font-semibold" x-text="excSummary?.by_state.active"></div>
+				<div class="flex flex-wrap gap-1 mt-1">
+					<template x-for="level in ['very high', 'high', 'low', 'very low']" :key="level">
+						<span x-show="excSummary?.active_by_level[level]" :class="excLevelClass(level)" class="px-2 rounded-lg text-ss text-white uppercase" x-text="excSummary?.active_by_level[level] + ' ' + level"></span>
+					</template>
+				</div>
+			</div>
+			<div class="hover:cursor-pointer" @click="excFilter = {state: 'submitted', risk: null}; switchTab({'tab':'exceptions'})">
+				<div class="text-xs opacity-70">Awaiting approval</div>
+				<div class="text-2xl font-semibold" :class="{'text-warning': excSummary?.by_state.submitted}" x-text="excSummary?.by_state.submitted"></div>
+			</div>
+			<div class="hover:cursor-pointer" @click="excFilter = {state: 'expiring', risk: null}; switchTab({'tab':'exceptions'})">
+				<div class="text-xs opacity-70" x-text="'Expiring within ' + excSummary?.expiring_soon_days + ' days'"></div>
+				<div class="text-2xl font-semibold" :class="{'text-warning': excSummary?.expiring_soon}" x-text="excSummary?.expiring_soon"></div>
+			</div>
+			<div class="hover:cursor-pointer" @click="excFilter = {state: 'expired', risk: null}; switchTab({'tab':'exceptions'})">
+				<div class="text-xs opacity-70">Expired</div>
+				<div class="text-2xl font-semibold" :class="{'text-error': excSummary?.by_state.expired}" x-text="excSummary?.by_state.expired"></div>
+			</div>
+		</div>
+	</div>
+</div>

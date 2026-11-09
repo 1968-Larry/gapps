@@ -601,6 +601,62 @@ class Authorizer:
             return self.return_response(True, AUTHORIZED_MSG, 200, risk=risk)
         return self.return_response(False, UNAUTHORIZED_MSG, 403)
 
+    # exceptions (deviations). Project exceptions follow the project roles:
+    #   read    - any project member (and tenant admins)
+    #   edit    - project manager / contributor (create, change, submit, link, comment)
+    #   manage  - project manager (delete, close, reopen)
+    #   approve - tenant admin / owner, risk manager or project manager; never the
+    #             person who requested it (checked in PolicyException.approve)
+    def _exception_project(self, exception):
+        return exception.project if exception.project_id else None
+
+    def _can_user_approve_exception(self, exception):
+        tenant = exception.tenant
+        if (
+            self._can_user_admin_tenant(tenant)
+            or self.user.has_any_role_for_tenant(tenant, ["riskmanager"])
+        ):
+            return True
+        project = self._exception_project(exception)
+        return bool(project and project.has_member_with_access(self.user, ["manager"]))
+
+    def can_user_read_exception(self, exception):
+        if not (exception := self.id_to_obj("PolicyException", exception)):
+            return self.return_response(False, "exception not found", 404)
+        project = self._exception_project(exception)
+        if project and self._can_user_access_project(project):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        if not project and self._can_user_access_risk_module(exception.tenant):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
+    def can_user_edit_exception(self, exception):
+        if not (exception := self.id_to_obj("PolicyException", exception)):
+            return self.return_response(False, "exception not found", 404)
+        project = self._exception_project(exception)
+        if project and self._can_user_edit_project(project):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        if not project and self._can_user_manage_risk(exception.tenant):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
+    def can_user_manage_exception(self, exception):
+        if not (exception := self.id_to_obj("PolicyException", exception)):
+            return self.return_response(False, "exception not found", 404)
+        project = self._exception_project(exception)
+        if project and self._can_user_manage_project(project):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        if not project and self._can_user_manage_risk(exception.tenant):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
+    def can_user_approve_exception(self, exception):
+        if not (exception := self.id_to_obj("PolicyException", exception)):
+            return self.return_response(False, "exception not found", 404)
+        if self._can_user_approve_exception(exception):
+            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
     # user email confirmation
     def can_user_send_email_confirmation(self, user):
         if not (user := self.id_to_obj("User", user)):

@@ -1,6 +1,7 @@
 """
 Create a demo tenant with fake users, 10 projects and pre-made data (subcontrol
-status, evidence, risks with dates/history) so the platform can be demonstrated.
+status, evidence, risks with dates/history, exceptions in every state) so the
+platform can be demonstrated.
 
 Everything lives in ONE tenant (default name "demo") and all fake users use the
 address domain demo.example.com. Real tenants and users are never touched.
@@ -34,6 +35,7 @@ from app.models import (
     EvidenceAssociation,
     Framework,
     Logs,
+    PolicyException,
     Project,
     RiskAssociation,
     RiskComment,
@@ -109,6 +111,34 @@ EVIDENCE_TEMPLATES = [
     ("Policy approval record", "Management approval of the security policies."),
     ("Encryption configuration", "Screenshots of encryption settings."),
     ("Monitoring dashboard export", "Alerting rules and last month's alerts."),
+]
+
+# (title, description, justification, compensating controls, affected assets)
+EXCEPTION_TEMPLATES = [
+    ("SMBv1 enabled on document scanners", "Hardening baseline: SMBv1 must be disabled on all hosts.",
+     "The scanner firmware only supports SMBv1 and the vendor has no update.",
+     "Scanners in their own VLAN, firewall only allows TCP/445 to the scan file server.", "scan01, scan02"),
+    ("Patch window missed for ERP database", "Patch policy: critical patches within 14 days.",
+     "The ERP vendor has not yet certified the latest database patch level.",
+     "Extra monitoring of the database host, access limited to the application servers.", "erp-db01"),
+    ("Local admin rights for CAD workstations", "Least privilege: no local administrator rights for end users.",
+     "The CAD licence tool needs local admin rights to update its dongle driver.",
+     "EDR in blocking mode, separate admin account only used for the licence tool.", "CAD workstation group (12 PCs)"),
+    ("Legacy TLS 1.0 on badge system", "Encryption standard: TLS 1.2 or newer for all services.",
+     "The badge readers can only talk TLS 1.0 to the controller.",
+     "Controller and readers on an isolated network without internet access.", "badge-ctrl01"),
+    ("Password expiry disabled for service account", "Password policy: service account passwords rotated yearly.",
+     "Rotating the password breaks an integration that can not be updated before the replacement project.",
+     "Long random password stored in the vault, logon restricted to two servers.", "svc-integration"),
+    ("No MFA for shop floor terminals", "Access control: MFA for all interactive logons.",
+     "Shared terminals in the production hall, gloves and dust make tokens impractical.",
+     "Terminals kiosk-locked, only the MES application, no network access outside the OT zone.", "OT kiosk terminals"),
+    ("Unsupported OS on lab instrument PC", "Asset management: no operating systems without vendor support.",
+     "The instrument software only runs on Windows 7 and the instrument is replaced next year.",
+     "PC disconnected from the network, data moved with a scanned USB stick.", "lab-pc-07"),
+    ("Log retention shorter than policy", "Logging: security logs kept for 12 months.",
+     "Storage on the old log server is full until the SIEM migration is done.",
+     "Critical logs forwarded to the SIEM already, others kept 90 days.", "log01"),
 ]
 
 IMPLEMENTED_CONTEXT = [
@@ -356,6 +386,73 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
     return project, created, len(subs)
 
 
+def add_demo_exceptions(rng, project, today):
+    """A handful of exceptions in every state, linked to open subcontrols and risks."""
+    members = {}
+    for m in project.members.all():
+        members.setdefault(m.access_level, []).append(m.user_id)
+    approvers = members.get("manager", [])
+    requesters = members.get("contributor", []) or approvers
+    if not approvers or not requesters:
+        return 0
+    subs = [
+        s
+        for pc in project.controls.all()
+        for s in pc.subcontrols.all()
+        if s.is_applicable and s.implemented < 100
+    ]
+    risks = project.risks.all()
+    plan = ["active", "active", "active", "expiring", "expired", "submitted", "draft", "rejected", "closed"]
+    created = 0
+    for (title, desc, why, comp, assets), state in zip(
+        rng.sample(EXCEPTION_TEMPLATES, min(len(EXCEPTION_TEMPLATES), rng.randint(4, 7))),
+        rng.sample(plan, len(plan)),
+    ):
+        requester = rng.choice(requesters)
+        approver = rng.choice([a for a in approvers if a != requester] or approvers)
+        expiry = today + timedelta(days=rng.choice([45, 90, 120, 180, 270]))
+        if state == "expiring":
+            expiry = today + timedelta(days=rng.randint(3, 20))
+        exc = project.create_exception(
+            {
+                "title": title,
+                "description": desc,
+                "justification": why,
+                "compensating_controls": comp,
+                "affected_assets": assets,
+                "likelihood": weighted(rng, {1: 15, 2: 45, 3: 30, 4: 10}),
+                "impact": weighted(rng, {1: 10, 2: 35, 3: 35, 4: 20}),
+                "assignee": requester,
+                "expiry_date": expiry.isoformat(),
+                "ticket_number": f"CHG-{rng.randint(1000, 9999)}" if rng.random() < 0.6 else None,
+            },
+            requested_by=requester,
+        )
+        created += 1
+        for psc in rng.sample(subs, min(len(subs), rng.randint(1, 2))):
+            psc.associate_with_exception(exc.id)
+        if risks and rng.random() < 0.5:
+            exc.associate_with_risk(rng.choice(risks).id)
+        if state == "draft":
+            continue
+        exc.submit(requester)
+        if state == "submitted":
+            continue
+        if state == "rejected":
+            exc.reject(approver, "Describe the compensating controls in more detail.")
+            continue
+        exc.approve(approver, "Accepted until the replacement is in place.")
+        if state == "expired":
+            # pretend it was approved a while ago and nobody renewed it
+            exc.valid_from = today - timedelta(days=200)
+            exc.expiry_date = today - timedelta(days=rng.randint(5, 40))
+            exc._skip_history = True
+            db.session.commit()
+        elif state == "closed":
+            exc.close("Fixed - the system was replaced.")
+    return created
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tenant", default="demo", help="name of the demo tenant (default: demo)")
@@ -446,8 +543,17 @@ def main():
             )
             total_risks += 1
 
+        # exceptions, with their own random generator so the data above stays the same
+        erng = random.Random(args.seed + 1)
+        total_exceptions = 0
+        for project in tenant.projects.order_by(Project.date_added).all():
+            total_exceptions += add_demo_exceptions(erng, project, today)
+
         log("")
-        log(f"Done: tenant '{args.tenant}', {count} projects, {total_risks} risks")
+        log(
+            f"Done: tenant '{args.tenant}', {count} projects, {total_risks} risks, "
+            f"{total_exceptions} exceptions"
+        )
         log(f"Log in with {admin_email} / {args.password}")
         log(f"All demo users share that password, e.g. {demo_email('Erik', 'Johansson')}")
 

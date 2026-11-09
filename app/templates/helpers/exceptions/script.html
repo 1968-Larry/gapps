@@ -1,0 +1,468 @@
+<script>
+/*
+ * Exceptions (deviations) for the project page. Merged into project() with
+ * {...exceptionsMixin(), ...}, so `this` is the project component and the
+ * helpers there (request, toast, projectUsers, risks, selectedSubControl,
+ * refreshControlFromServer, openRiskFromSubControl, ...) can be used.
+ * No getters here: the spread would evaluate them once.
+ */
+function exceptionsMixin() {
+	return {
+		exceptions: [],
+		filteredExceptions: [],
+		excLoading: true,
+		excSummary: null,
+		excFilter: {state: null, risk: null},
+		excSearch: "",
+		excSettings: {max_validity_months: 12, expiring_soon_days: 30, self_approval_allowed: false},
+		selectedException: {},
+		excTab: "overview",
+		excMessages: [],
+		excMessage: "",
+		excHistory: [],
+		excHistoryLoading: false,
+		excLinks: [],
+		excLinksLoading: false,
+		excDecisionNote: "",
+		excBusy: false,
+		excRiskToAdd: "",
+		riskExceptions: [],
+		showCreateException: false,
+		creatingExcForSubControl: false,
+		excPayload: {},
+		showAttachExceptionModal: false,
+		excAttachSelected: [],
+		showRemoveExceptionModal: false,
+		removeExceptionId: null,
+		showDeleteExceptionModal: false,
+		excStateLabels: {
+			draft: "Draft", submitted: "Awaiting approval", rejected: "Rejected",
+			active: "Active", expired: "Expired", closed: "Closed"
+		},
+		excFieldLabels: {
+			status: "Status", likelihood: "Likelihood", impact: "Impact", risk: "Level",
+			assignee: "Owner", valid_from: "Valid from", expiry_date: "Expiry date"
+		},
+
+		initExceptions() {
+			request("GET", "/api/v1/exception-settings",
+				data => { this.excSettings = data },
+				error => { console.log("Unable to load exception settings") }
+			);
+			const params = new window.URLSearchParams(window.location.search);
+			this.getExceptions(params.get("exception-id"))
+			this.$watch("excFilter", () => this.filterExceptions())
+			this.$watch("excSearch", () => this.filterExceptions())
+		},
+		getExceptions(openId = null) {
+			this.excLoading = true
+			request("GET", `/api/v1/projects/${this.projectId}/exceptions`,
+				data => {
+					this.exceptions = data
+					this.filterExceptions()
+					this.getExceptionSummary()
+					this.excLoading = false
+					// keep the open drawer in sync with the fresh list
+					const openNow = openId || this.selectedException.id
+					if (openNow) {
+						const found = this.exceptions.find(e => e.id === openNow)
+						if (found && openId) {
+							this.openExceptionDrawer(found)
+						} else if (found) {
+							this.selectedException = found
+							this.excMessages = found.comments || []
+						}
+					}
+				},
+				error => {
+					this.excLoading = false
+					toast(error.message, "error")
+				}
+			);
+		},
+		getExceptionSummary() {
+			request("GET", `/api/v1/projects/${this.projectId}/exceptions/summary`,
+				data => { this.excSummary = data },
+				error => { console.log("Unable to load exception summary") }
+			);
+		},
+		excMatchesState(exc, state) {
+			if (state === "expiring") return exc.state === "active" && exc.expiring_soon
+			return exc.state === state
+		},
+		filterExceptions() {
+			const q = (this.excSearch || "").toLowerCase()
+			this.filteredExceptions = this.exceptions.filter(exc => {
+				if (this.excFilter.state && !this.excMatchesState(exc, this.excFilter.state)) return false
+				if (this.excFilter.risk && exc.risk !== this.excFilter.risk) return false
+				if (q) {
+					const text = [exc.title, exc.affected_assets, exc.ticket_number,
+						...(exc.links || []).map(l => l.ref_code + " " + l.name)].join(" ").toLowerCase()
+					if (!text.includes(q)) return false
+				}
+				return true
+			})
+		},
+		excHasFilter() {
+			return !!(this.excFilter.state || this.excFilter.risk || this.excSearch)
+		},
+		excClearFilter() {
+			this.excFilter = {state: null, risk: null}
+			this.excSearch = ""
+		},
+		excCount(state) {
+			return this.exceptions.filter(e => this.excMatchesState(e, state)).length
+		},
+		excLevelCount(level) {
+			return this.exceptions.filter(e => e.risk === level && !["closed", "rejected"].includes(e.state)).length
+		},
+		excStateClass(state) {
+			return {
+				"bg-base-300 text-base-content": state === "draft" || state === "closed",
+				"bg-warning": state === "submitted",
+				"bg-success": state === "active",
+				"bg-error": state === "expired" || state === "rejected",
+			}
+		},
+		excLevelClass(level) {
+			return {
+				"bg-primary": !level || level === "unknown",
+				"bg-success": level === "very low",
+				"bg-warning": level === "low",
+				"bg-error opacity-80": level === "high",
+				"bg-error": level === "very high",
+			}
+		},
+		excExpiryText(exc) {
+			if (!exc.expiry_date) return "-"
+			if (exc.state === "closed") return exc.expiry_date
+			const d = exc.days_left
+			if (d === null || d === undefined) return exc.expiry_date
+			if (d < 0) return exc.expiry_date + " (" + (-d) + " d ago)"
+			if (d === 0) return exc.expiry_date + " (today)"
+			return exc.expiry_date + " (" + d + " d)"
+		},
+		excCanDecide(exc) {
+			return exc.state === "submitted" && exc.can_approve &&
+				(!exc.is_requester || this.excSettings.self_approval_allowed)
+		},
+		excReadOnly(exc) {
+			return !exc.can_edit || exc.status === "closed"
+		},
+		excUserEmail(id) {
+			if (!id) return "-"
+			const u = (this.projectUsers || []).find(x => x.id === id)
+			return u ? u.email : id
+		},
+
+		// -- create ----------------------------------------------------------------
+		excAddMonths(months) {
+			const d = new Date()
+			const day = d.getDate()
+			d.setDate(1)
+			d.setMonth(d.getMonth() + months)
+			const last = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+			d.setDate(Math.min(day, last))
+			const pad = n => String(n).padStart(2, "0")
+			return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+		},
+		excRecalc(item) {
+			const l = parseInt(item.likelihood), i = parseInt(item.impact)
+			if (l && i) {
+				const s = l * i
+				item.risk = s <= 2 ? "very low" : (s <= 6 ? "low" : (s <= 9 ? "high" : "very high"))
+			}
+		},
+		openCreateException(forSubControl = false) {
+			this.excPayload = {
+				title: "", description: "", justification: "", compensating_controls: "",
+				affected_assets: "", likelihood: "", impact: "", risk: "unknown",
+				assignee: "", expiry_date: this.excAddMonths(Math.min(6, this.excSettings.max_validity_months || 6)),
+				valid_from: "", ticket_number: ""
+			}
+			this.creatingExcForSubControl = forSubControl
+			this.showCreateException = true
+		},
+		createException(submit = false) {
+			const payload = {...this.excPayload, submit: submit}
+			payload.likelihood = payload.likelihood || null
+			payload.impact = payload.impact || null
+			if (this.creatingExcForSubControl && this.selectedSubControl) {
+				payload.subcontrols = [this.selectedSubControl.id]
+			}
+			this.excBusy = true
+			request("POST", `/api/v1/projects/${this.projectId}/exceptions`,
+				data => {
+					this.excBusy = false
+					this.showCreateException = false
+					toast(submit ? "Exception created and sent for approval" : "Exception created as draft")
+					if (this.creatingExcForSubControl && this.selectedControl) {
+						this.refreshControlFromServer(this.selectedControl.id)
+					}
+					this.creatingExcForSubControl = false
+					this.getExceptions()
+				},
+				error => {
+					this.excBusy = false
+					// the draft may have been saved even when submit failed
+					toast(error.message, "error")
+					this.getExceptions()
+				},
+				payload
+			);
+		},
+
+		// -- drawer ----------------------------------------------------------------
+		openExceptionDrawer(exc) {
+			this.selectedException = exc
+			this.excMessages = exc.comments || []
+			this.excDecisionNote = ""
+			this.excRiskToAdd = ""
+			this.excTab = "overview"
+			this.setURLParam("exception-id", exc.id)
+			document.getElementById("exception-drawer").checked = true
+		},
+		openExceptionById(id) {
+			const full = this.exceptions.find(e => e.id === id)
+			if (full) {
+				this.openExceptionDrawer(full)
+			} else {
+				request("GET", `/api/v1/exceptions/${id}`,
+					data => this.openExceptionDrawer(data),
+					error => toast(error.message, "error"))
+			}
+		},
+		closeExceptionDrawer() {
+			this.selectedException = {}
+			this.deleteURLParam("exception-id")
+			document.getElementById("exception-drawer").checked = false
+		},
+		changeExcTab(tab) {
+			this.excTab = tab
+			if (tab === "history") this.getExceptionHistory(this.selectedException)
+			if (tab === "links") this.getExceptionLinks(this.selectedException)
+		},
+		copyExceptionLink(id) {
+			const url = new URL(window.location.href)
+			url.searchParams.set("tab", "exceptions")
+			url.searchParams.set("exception-id", id)
+			this.copyLink(url)
+		},
+		excApply(data) {
+			// same object as in the list, so the table follows
+			Object.assign(this.selectedException, data)
+			this.excMessages = this.selectedException.comments || []
+			this.filterExceptions()
+			this.getExceptionSummary()
+		},
+		saveException() {
+			const exc = this.selectedException
+			if (!exc.id || this.excReadOnly(exc)) return
+			const wasApproved = exc.status === "approved"
+			const data = {
+				title: exc.title, description: exc.description, justification: exc.justification,
+				compensating_controls: exc.compensating_controls, affected_assets: exc.affected_assets,
+				likelihood: exc.likelihood || null, impact: exc.impact || null, risk: exc.risk,
+				ticket_number: exc.ticket_number || null, valid_from: exc.valid_from || null,
+				expiry_date: exc.expiry_date || null, assignee: exc.assignee || null
+			}
+			request("PUT", `/api/v1/exceptions/${exc.id}`,
+				resp => {
+					this.excApply(resp)
+					if (wasApproved && resp.status === "submitted") {
+						toast("Changed after approval - the exception needs a new approval", "warning")
+					} else {
+						toast("Updated exception")
+					}
+				},
+				error => {
+					toast(error.message, "error")
+					this.getExceptions()
+				},
+				data
+			);
+		},
+		excAction(action, needsNote = false) {
+			const exc = this.selectedException
+			if (needsNote && !(this.excDecisionNote || "").trim()) {
+				toast("Write a reason in the note field first", "error")
+				return
+			}
+			this.excBusy = true
+			request("POST", `/api/v1/exceptions/${exc.id}/${action}`,
+				data => {
+					this.excBusy = false
+					this.excDecisionNote = ""
+					this.excApply(data)
+					const done = {submit: "Sent for approval", approve: "Exception approved", reject: "Exception rejected",
+						close: "Exception closed", reopen: "Exception reopened as draft"}
+					toast(done[action] || "Done")
+					if (this.excTab === "history") this.getExceptionHistory(exc)
+				},
+				error => {
+					this.excBusy = false
+					toast(error.message, "error")
+				},
+				{note: this.excDecisionNote}
+			);
+		},
+		deleteException() {
+			const exc = this.selectedException
+			request("DELETE", `/api/v1/exceptions/${exc.id}`,
+				data => {
+					toast("Exception deleted")
+					this.showDeleteExceptionModal = false
+					this.closeExceptionDrawer()
+					this.getExceptions()
+				},
+				error => {
+					this.showDeleteExceptionModal = false
+					toast(error.message, "error")
+				}
+			);
+		},
+		getExceptionHistory(exc) {
+			this.excHistory = []
+			this.excHistoryLoading = true
+			request("GET", `/api/v1/exceptions/${exc.id}/history`,
+				data => {
+					if (this.selectedException.id === exc.id) this.excHistory = data
+					this.excHistoryLoading = false
+				},
+				error => {
+					this.excHistoryLoading = false
+					toast(error.message, "error")
+				}
+			);
+		},
+		describeExcChange(entry) {
+			const show = (field, v) => {
+				if (v === null || v === undefined || v === "") return "-"
+				if (field === "assignee") return this.excUserEmail(v)
+				return v
+			}
+			if (entry.event === "created") {
+				return ["Created (level: " + show("risk", (entry.snapshot || {}).risk) + ")"]
+			}
+			return Object.entries(entry.changes || {}).map(([field, v]) =>
+				(this.excFieldLabels[field] || field) + ": " + show(field, v[0]) + " -> " + show(field, v[1]))
+		},
+		getExceptionLinks(exc) {
+			this.excLinks = []
+			this.excLinksLoading = true
+			request("GET", `/api/v1/exceptions/${exc.id}/links`,
+				data => {
+					if (this.selectedException.id === exc.id) this.excLinks = data
+					this.excLinksLoading = false
+				},
+				error => {
+					this.excLinksLoading = false
+					toast(error.message, "error")
+				}
+			);
+		},
+		createExceptionMessage() {
+			const exc = this.selectedException
+			if (!this.excMessage) return
+			request("POST", `/api/v1/exceptions/${exc.id}/comments`,
+				data => {
+					exc.comments = [...(exc.comments || []), data]
+					this.excMessages = exc.comments
+					this.excMessage = ""
+				},
+				error => toast(error.message, "error"),
+				{message: this.excMessage}
+			);
+		},
+
+		// -- risks -------------------------------------------------------------------
+		excAvailableRisks() {
+			const linked = (this.selectedException.risks || []).map(r => r.id)
+			return (this.risks || []).filter(r => !linked.includes(r.id))
+		},
+		linkRiskToException() {
+			if (!this.excRiskToAdd) return
+			request("PUT", `/api/v1/exceptions/${this.selectedException.id}/risks`,
+				data => {
+					this.excApply(data)
+					this.excRiskToAdd = ""
+					toast("Risk linked")
+				},
+				error => toast(error.message, "error"),
+				{risk: [this.excRiskToAdd]}
+			);
+		},
+		unlinkRiskFromException(riskId) {
+			request("DELETE", `/api/v1/exceptions/${this.selectedException.id}/risks`,
+				data => {
+					this.excApply(data)
+					toast("Risk unlinked")
+				},
+				error => toast(error.message, "error"),
+				{risk: [riskId]}
+			);
+		},
+		openRiskFromException(risk) {
+			this.closeExceptionDrawer()
+			this.openRiskFromSubControl(risk)
+		},
+		getRiskExceptions(report) {
+			this.riskExceptions = []
+			request("GET", `/api/v1/risks/${report.id}/exceptions`,
+				data => {
+					if (this.selectedReport && this.selectedReport.id === report.id) this.riskExceptions = data
+				},
+				error => console.log("Unable to load exceptions for risk")
+			);
+		},
+		openExceptionFromRisk(exc) {
+			this.closeReportDrawer()
+			this.openExceptionById(exc.id)
+		},
+
+		// -- sub-control -------------------------------------------------------------
+		openExceptionFromSubControl(item) {
+			this.openExceptionById(item.id)
+		},
+		openAttachException() {
+			this.excAttachSelected = (this.selectedSubControl.exceptions || []).map(e => e.id)
+			this.showAttachExceptionModal = true
+		},
+		toggleAttachException(id, checked) {
+			if (checked) {
+				if (!this.excAttachSelected.includes(id)) this.excAttachSelected.push(id)
+			} else {
+				this.excAttachSelected = this.excAttachSelected.filter(x => x !== id)
+			}
+		},
+		saveAttachedExceptions() {
+			request("PUT", `/api/v1/subcontrols/${this.selectedSubControl.id}/associate-exception`,
+				data => {
+					toast("Updated exceptions", level = "success", duration = 2000, bottom = true)
+					this.showAttachExceptionModal = false
+					this.refreshControlFromServer(this.selectedControl.id)
+					this.getExceptions()
+				},
+				error => toast(error.message, "error"),
+				{exception: this.excAttachSelected, replace: true}
+			);
+		},
+		removeExceptionFromSubControl(id) {
+			request("DELETE", `/api/v1/subcontrols/${this.selectedSubControl.id}/disassociate-exception`,
+				data => {
+					toast("Removed exception", level = "success", duration = 2000, bottom = true)
+					this.selectedSubControl = data
+					this.showRemoveExceptionModal = false
+					this.refreshControlFromServer(this.selectedControl.id)
+					this.getExceptions()
+				},
+				error => {
+					this.showRemoveExceptionModal = false
+					toast(error.message, "error")
+				},
+				{exception: [id]}
+			);
+		},
+	}
+}
+</script>

@@ -302,6 +302,8 @@ DEFAULT_GUI_EVENTS = (
     "password_changed,password_reset_requested,password_reset_completed,password_reset_failed,"
     "member_roles_changed,project_member_removed,api_token_issued,frameworks_reloaded,"
     "risk_reminder_sent,risk_reminder_failed,"
+    "exception_approved,exception_rejected,exception_reminder_sent,exception_reminder_failed,"
+    "resource_deleted:PolicyException,"
     "resource_deleted:Project,resources_deleted:Project,"
     "resource_deleted:ProjectEvidence,resources_deleted:ProjectEvidence,"
     "resource_deleted:RiskRegister,resources_deleted:RiskRegister,"
@@ -529,6 +531,25 @@ def _label_risk_link(c, d):
     return "risk '%s' <-> %s" % (risk, sc), {"project": _text(c, "Project", pid, "name")}
 
 
+def _label_exception_link(c, d):
+    exc = _text(c, "PolicyException", d.get("exception_id"), "title")
+    sc = _subcontrol_via_project_subcontrol(c, d.get("control_id"))
+    pid = _text(c, "ProjectSubControl", d.get("control_id"), "project_id")
+    return "exception '%s' <-> %s" % (exc, sc), {"project": _text(c, "Project", pid, "name")}
+
+
+def _label_exception_risk_link(c, d):
+    exc = _text(c, "PolicyException", d.get("exception_id"), "title")
+    risk = _text(c, "RiskRegister", d.get("risk_id"), "title")
+    return "exception '%s' <-> risk '%s'" % (exc, risk), {}
+
+
+def _label_comment_exception(c, d):
+    return "comment on " + (
+        _text(c, "PolicyException", d.get("exception_id"), "title") or "?"
+    ), {}
+
+
 def _label_comment_project(c, d):
     return "comment on " + (_text(c, "Project", d.get("project_id"), "name") or "?"), {}
 
@@ -548,7 +569,7 @@ def _label_comment_subcontrol(c, d):
 
 
 # Fields that hold a user id: show the e-mail address instead of the id
-_USER_REF_FIELDS = {"owner_id", "operator_id", "assignee", "reviewer_id"}
+_USER_REF_FIELDS = {"owner_id", "operator_id", "assignee", "reviewer_id", "decided_by"}
 
 
 # --------------------------------------------------------------------------- #
@@ -662,6 +683,18 @@ AUDIT_SPECS = {
     # Evidence / risk links on a sub-control (rows added/removed = linked/unlinked)
     "EvidenceAssociation": dict(label=_label_evidence_link, fields=[], bulk=True),
     "RiskAssociation": dict(label=_label_risk_link, fields=[], bulk=True),
+    "PolicyException": dict(
+        label=_label_project_child("title"),
+        fields=[
+            "title", "description", "justification", "compensating_controls",
+            "affected_assets", "risk", "likelihood", "impact", "status", "assignee",
+            "valid_from", "expiry_date", "decided_by", "project_id",
+        ],
+        values=["risk", "status", "assignee", "valid_from", "expiry_date", "decided_by"],
+    ),
+    "ExceptionAssociation": dict(label=_label_exception_link, fields=[], bulk=True),
+    "ExceptionRiskAssociation": dict(label=_label_exception_risk_link, fields=[], bulk=True),
+    "ExceptionComment": dict(label=_label_comment_exception, fields=[]),
     "ProjectComment": dict(label=_label_comment_project, fields=[]),
     "RiskComment": dict(label=_label_comment_risk, fields=[]),
     "ControlComment": dict(label=_label_comment_control, fields=[]),

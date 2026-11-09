@@ -333,6 +333,13 @@ class SubControlMixin(object):
         data["has_risks"] = False
         if data["risks"]:
             data["has_risks"] = True
+
+        data["exceptions"] = [exc.summary() for exc in self.exceptions.all()]
+        data["has_exceptions"] = bool(data["exceptions"])
+        # exceptions that are in force right now (approved, not expired)
+        data["active_exceptions"] = sum(
+            1 for exc in data["exceptions"] if exc["state"] == "active"
+        )
         return data
 
     def get_evidence(self, as_dict=False):

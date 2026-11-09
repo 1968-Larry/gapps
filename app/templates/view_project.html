@@ -314,6 +314,9 @@
 						  <button x-show="selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Risks ('+selectedSubControl.risks.length+')'"></span>
 						  </button>
+						  <button @click="changeSubControlTabInDrawer('exceptions')" :class="{'btn-active': activeSubSideTab==='exceptions'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							Exceptions<span x-show="selectedSubControl?.exceptions && selectedSubControl?.exceptions.length" class="ml-1" :class="{'text-success': selectedSubControl?.active_exceptions}" x-text="'(' + (selectedSubControl?.exceptions || []).length + ')'"></span>
+						  </button>
 						  <button @click="changeSubControlTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeSubSideTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100" x-text="'Comments ('+messagesForControl.length+')'"></button>
 						</div>
 					</div>
@@ -861,6 +864,7 @@
 						</div>
 
 					</div>
+					{% include "helpers/exceptions/subcontrol_tab.html" %}
 					<div x-show="activeSubSideTab==='comments'" class="flex-1 overflow-y-auto">
 						<div x-show="messagesForControl.length===0" class="flex-grow min-h-full hero-content text-center">
 							<div class="max-w-md">
@@ -926,6 +930,8 @@
 	</div>
 </div>
 
+{% include "helpers/exceptions/drawer.html" %}
+
 <!--    Drawer to view the selected reports-->
 <div class="drawer drawer-end z-50">
 	<input @change="closeReportDrawer" id="report-drawer" type="checkbox" class="drawer-toggle" />
@@ -990,7 +996,7 @@
 						<div role="tablist" class="tabs gap-x-2">
 					  <button @click="changeTabInDrawer('overview')" :class="{'btn-active': activeReportTab==='overview'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeReportTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Comments ('+riskMessages.length+')'"></button>
-					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+riskLinks.length+')'"></button>
+					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+(riskLinks.length + riskExceptions.length)+')'"></button>
 					  <button @click="changeTabInDrawer('history'); getHistory(selectedReport)" :class="{'btn-active': activeReportTab==='history'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">History</button>
 					</div>
 					</div>
@@ -1126,6 +1132,23 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 												<i class="ti ti-external-link text-xs"></i>
 											</a>
 										</td>
+									</tr>
+								</template>
+							</tbody>
+						</table>
+					</div>
+
+					<div x-show="activeReportTab==='links' && riskExceptions.length>0" class="card mt-6">
+						<h3 class="font-semibold mb-2">Exceptions</h3>
+						<table class="table table-sm">
+							<thead><tr><th>Exception</th><th>State</th><th>Level</th><th>Expires</th></tr></thead>
+							<tbody>
+								<template x-for="exc in riskExceptions" :key="exc.id">
+									<tr>
+										<td><a @click="openExceptionFromRisk(exc)" class="underline hover:cursor-pointer hover:opacity-75" x-text="exc.title"></a></td>
+										<td><span :class="excStateClass(exc.state)" class="pill whitespace-nowrap" x-text="excStateLabels[exc.state]"></span></td>
+										<td><span :class="excLevelClass(exc.risk)" class="pill" x-text="exc.risk"></span></td>
+										<td class="text-xs" x-text="excExpiryText(exc)"></td>
 									</tr>
 								</template>
 							</tbody>
@@ -1542,6 +1565,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						</h3>
 					  </div>
 					</div>
+					{% include "helpers/exceptions/summary.html" %}
 					<div class="col-span-2 card border border-base-200 shadow-md bg-base-200 mb-20">
 						<div class="card-body text-sm">
 							<div class="flex flex-row mb-4">
@@ -2814,6 +2838,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 				</div>
 			</div>	
 
+			{% include "helpers/exceptions/tab.html" %}
+
 			<div class="col-span-6 text-center" x-show="selectedTab === 'audit review' && !tabLoading">
 				<div class="grid grid-cols-12 gap-4">
 					<div x-show="projectData.auditors.length" class="col-span-12">
@@ -4013,6 +4039,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 		</div>
 	</div>
 
+	{% include "helpers/exceptions/modals.html" %}
+
 	<div class="modal" x-bind:class="{ 'modal-open': showRemoveRiskModal }">
 		<div class="modal-box">
 			<form method="dialog">
@@ -4554,6 +4582,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 {%endblock%}
 
 {%block extrajs%}
+{% include "helpers/exceptions/script.html" %}
 <script>
 
 function loadImage(url) {
@@ -4575,6 +4604,7 @@ function imageToBase64(img) {
 
 function project(){
 	return {
+		...exceptionsMixin(),
 		init() {
 		  this.hasSidebar = false;
 		  if ("{{project.has_auditor(current_user)}}".toLowerCase() === "true") {
@@ -4648,6 +4678,7 @@ function project(){
 		  this.getProjectTags()
 		  this.loadRiskSettings()
 		  this.getRisks()
+		  this.initExceptions()
 		  this.getProjectEvidence()
 		  this.loadComments()
 		  var params = new window.URLSearchParams(window.location.search);
@@ -4725,7 +4756,7 @@ function project(){
 		reviewNote: "",
 		messagesForControl: [],
 		tenantPolicies: [],
-		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "users", "integrations", "report", "settings"],
+		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "exceptions", "users", "integrations", "report", "settings"],
 		loadingSkeleton: '<span class="loading loading-dots loading-lg"></span>',
 		tabLoading: true,
 		tableLoading: true,
@@ -5467,6 +5498,7 @@ function project(){
         	}
 			this.riskMessages = report.comments;
 			this.getRiskLinks(report)
+			this.getRiskExceptions(report)
 			document.getElementById('report-drawer').checked = true;
         },		
 		openRiskFromSubControl: function(item) {
