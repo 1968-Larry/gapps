@@ -70,6 +70,15 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Ticket number on sub-controls and a link field on evidence
 - "Reload frameworks" for existing tenants
 
+**Reports (project > Report)**
+- Statement of Applicability: every control with applicability, implementation, justification,
+  owner, evidence and the exceptions that apply; controls excluded without a justification are
+  highlighted
+- Risk register and exception register (with the approval trail)
+- Each as PDF (landscape, page numbers, who generated it) and as CSV for Excel (semicolon separated,
+  UTF-8 with BOM)
+- The Executive / Technical report also show open risks per level and the exceptions
+
 **Reporting across projects**
 - Gaps page (menu: More > gaps): sub-controls grouped across all projects to show common gaps.
   Filter on status (not complete, not implemented, partial, missing evidence ...), framework and

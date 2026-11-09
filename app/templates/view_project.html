@@ -2499,6 +2499,9 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							<ul>
 							  <li><a :class="{'text-primary': report==='executive'}" @click="report='executive'">Executive</a></li>
 							  <li><a :class="{'text-primary': report==='technical'}" @click="report='technical'">Technical (Recommended)</a></li>
+							  <li><a :class="{'text-primary': report==='soa'}" @click="report='soa'">Statement of Applicability</a></li>
+							  <li><a :class="{'text-primary': report==='risks'}" @click="report='risks'">Risk Register</a></li>
+							  <li><a :class="{'text-primary': report==='exceptions'}" @click="report='exceptions'">Exception Register</a></li>
 							</ul>
 						  </li>
 						</ul>
@@ -2514,7 +2517,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							<div x-show="report==='executive'" class="max-w-md">
 							  <h1 class="text-2xl font-bold">Executive Report</h1>
 							  <p class="py-6">
-								The executive report provides a breakdown of the current status of the compliance project.
+								The executive report provides a breakdown of the current status of the compliance project,
+								including open risks per level and the exceptions.
 							  </p>
 							  <button @click="generateExecReport" class="btn btn-primary">Download</button>
 							</div>
@@ -2524,6 +2528,43 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 								The technical report includes everything from the Executive report (summaries, etc), along with a list of all controls in the project and the progress.
 							  </p>
 							  <button @click="generateTechReport" class="btn btn-primary">Download</button>
+							</div>
+							<div x-show="report==='soa'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Statement of Applicability</h1>
+							  <p class="py-6">
+								Every control with whether it is applicable, how far it is implemented, the justification,
+								owner, evidence and the exceptions that apply. The document an ISO 27001 auditor asks for.
+								Controls marked not applicable without a justification are highlighted.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy" @click="soaReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy" @click="soaReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							</div>
+							<div x-show="report==='risks'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Risk Register</h1>
+							  <p class="py-6">
+								All risks of the project, open and highest level first: assessment (likelihood x impact),
+								status, owner, review dates, treatment and the controls and exceptions they are linked to.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy || !risks.length" @click="riskRegisterReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy || !risks.length" @click="riskRegisterReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							  <p x-show="!risks.length" class="text-sm opacity-70 mt-4">The project has no risks yet.</p>
+							</div>
+							<div x-show="report==='exceptions'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Exception Register</h1>
+							  <p class="py-6">
+								All exceptions that apply to the project (its own and linked organisation exceptions) with
+								state, level, validity, justification, compensating controls and who approved them when.
+								Expired exceptions first.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							  <p x-show="!exceptions.length" class="text-sm opacity-70 mt-4">The project has no exceptions yet.</p>
 							</div>
 					    </div>
 					</div>
@@ -4590,6 +4631,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 
 {%block extrajs%}
 {% include "helpers/exceptions/script.html" %}
+{% include "helpers/reports/script.html" %}
 <script>
 
 function loadImage(url) {
@@ -4612,6 +4654,7 @@ function imageToBase64(img) {
 function project(){
 	return {
 		...exceptionsMixin(),
+		...reportsMixin(),
 		init() {
 		  this.hasSidebar = false;
 		  if ("{{project.has_auditor(current_user)}}".toLowerCase() === "true") {
@@ -5301,6 +5344,28 @@ function project(){
 				data,
 				cursorY
 		    );
+		  }
+		  if (this.reportConfig.summary) {
+			const riskRows = this.rptExecRiskRows()
+			cursorY = this.renderReportSection(
+				doc,
+				`Open Risks`,
+				riskRows.length
+					? `Risks that are not mitigated or accepted, per level (likelihood x impact).`
+					: `There are no open risks in the project.`,
+				riskRows,
+				cursorY
+			);
+			const excRows = this.rptExecExceptionRows()
+			if (excRows.length) {
+				cursorY = this.renderReportSection(
+					doc,
+					`Exceptions`,
+					`Approved, time limited deviations from controls that apply to the project.`,
+					excRows,
+					cursorY
+				);
+			}
 		  }
 		  if (this.reportConfig.controls) {
 			  const allowedKeys = {
