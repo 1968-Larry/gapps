@@ -126,6 +126,28 @@ class Config:
     RISK_REMINDER_EXCLUDE_DOMAINS = os.environ.get(
         "RISK_REMINDER_EXCLUDE_DOMAINS", "demo.example.com"
     )
+    # Exceptions (deviations). An exception can be valid for at most this many
+    # months from approval (0 = no limit). "Expiring soon" is shown this many days
+    # before the expiry date. Self approval (approving an exception you requested
+    # yourself) is off by default - turn it on only for a one-person setup.
+    # Expiry reminders use the RISK_REMINDER_* settings (recipients, days before,
+    # repeat) and are sent by the same tools/send_risk_reminders.py run.
+    EXCEPTION_MAX_VALIDITY_MONTHS = int(os.environ.get("EXCEPTION_MAX_VALIDITY_MONTHS", 12))
+    EXCEPTION_EXPIRING_SOON_DAYS = int(os.environ.get("EXCEPTION_EXPIRING_SOON_DAYS", 30))
+    EXCEPTION_ALLOW_SELF_APPROVAL = (
+        os.environ.get("EXCEPTION_ALLOW_SELF_APPROVAL", "false").lower() == "true"
+    )
+    # Who approves which level: level=approver, approvers from low to high are
+    # project_manager, riskmanager (shown as Security manager) and ciso. A higher
+    # approver may also approve lower levels. Admins approve only when nobody
+    # (other than the requester) holds the required role.
+    EXCEPTION_APPROVERS = os.environ.get(
+        "EXCEPTION_APPROVERS",
+        "very high=ciso,high=ciso,low=riskmanager,very low=riskmanager",
+    )
+    EXCEPTION_REMINDERS_ENABLED = (
+        os.environ.get("EXCEPTION_REMINDERS_ENABLED", "true").lower() == "true"
+    )
     # Public address of the app, used for the links in the emails.
     APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
     # Session timeouts, enforced by the server (app/utils/session_timeout.py).

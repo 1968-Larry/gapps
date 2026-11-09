@@ -1,0 +1,203 @@
+{# Project tab "exceptions" and the collection page (excScope "tenant") - same layout as the risk register tab #}
+<div class="col-span-6 text-center" x-show="selectedTab === 'exceptions' && !tabLoading">
+	<div class="grid grid-cols-10">
+		<div class="col-span-2 rounded-tl-lg border-y border-l border-base-300 bg-base-200 sticky top-0 h-screen">
+			<div class="card">
+			<div class="card-body px-6">
+				<div class="flex justify-between">
+					<div class="text-lg font-semibold my-auto">Filter Exceptions</div>
+					<button x-show="excHasFilter()" @click="excClearFilter" class="btn btn-xs btn-ghost border border-base-300 text-error"><i class="ti ti-filter-x text-lg"></i></button>
+				</div>
+				<ul class="menu p-0">
+				  <li>
+					<div class="menu-title p-0 flex justify-between mb-1">
+						<h2 class="my-auto text-xs"><span class="tooltip" data-tip="Where the exception is in its life cycle"><i class="ti ti-info-hexagon mr-1 text-sm"></i></span>State</h2>
+						<button @click="excFilter.state = null" x-show="excFilter.state" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-x text-error"></i></button>
+					</div>
+					<ul class="text-xs font-medium">
+						<template x-for="state in ['submitted', 'active', 'expiring', 'expired', 'draft', 'rejected', 'closed']" :key="state">
+							<li>
+							  <a :class="{'bg-error opacity-80': excFilter.state === state}" @click="excFilter.state = state" class="flex justify-between w-full text-xs">
+								<span class="text-xs">
+									<i class="ti mr-1" :class="{'ti-hourglass text-warning': state==='submitted', 'ti-shield-check text-success': state==='active', 'ti-clock-exclamation text-warning': state==='expiring', 'ti-alert-triangle text-error': state==='expired', 'ti-pencil': state==='draft', 'ti-ban text-error': state==='rejected', 'ti-archive': state==='closed'}"></i>
+									<span x-text="state === 'expiring' ? 'Expiring soon' : excStateLabels[state]"></span>
+								</span>
+								<span class="text-xs" x-text="excCount(state)"></span>
+							  </a>
+							</li>
+						</template>
+					</ul>
+				  </li>
+				</ul>
+				<ul class="menu p-0" x-show="excScope === 'tenant'">
+				  <li>
+					<div class="menu-title p-0 flex justify-between mb-1">
+						<h2 class="my-auto text-xs"><span class="tooltip" data-tip="Organisation level or the project it belongs to (open exceptions)"><i class="ti ti-info-hexagon mr-1 text-sm"></i></span>Project</h2>
+						<button @click="excFilter.project = null" x-show="excFilter.project" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-x text-error"></i></button>
+					</div>
+					<ul class="text-xs font-medium">
+						<template x-for="opt in excProjectOptions()" :key="opt.key">
+							<li>
+							  <a :class="{'bg-error opacity-80': excFilter.project === opt.key}" @click="excFilter.project = opt.key" class="flex justify-between w-full text-xs">
+								<span class="text-xs" :class="{'italic': opt.key === '__org__'}" x-text="opt.label"></span>
+								<span class="text-xs" x-text="opt.count"></span>
+							  </a>
+							</li>
+						</template>
+					</ul>
+				  </li>
+				</ul>
+				<ul class="menu p-0">
+				  <li>
+					<div class="menu-title p-0 flex justify-between mb-1">
+						<h2 class="my-auto text-xs"><span class="tooltip" data-tip="Level from likelihood x impact (open exceptions)"><i class="ti ti-info-hexagon mr-1 text-sm"></i></span>Level</h2>
+						<button @click="excFilter.risk = null" x-show="excFilter.risk" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-x text-error"></i></button>
+					</div>
+					<ul class="text-xs font-medium">
+						<template x-for="level in ['very high', 'high', 'low', 'very low', 'unknown']" :key="level">
+							<li>
+							  <a :class="{'bg-error opacity-80': excFilter.risk === level}" @click="excFilter.risk = level" class="flex justify-between w-full text-xs">
+								<span class="text-xs capitalize"><i class="ti ti-alert-circle mr-1" :class="{'text-error': level==='very high', 'text-error opacity-80': level==='high', 'text-warning': level==='low', 'text-success': level==='very low'}"></i><span x-text="level"></span></span>
+								<span class="text-xs" x-text="excLevelCount(level)"></span>
+							  </a>
+							</li>
+						</template>
+					</ul>
+				  </li>
+				</ul>
+				<div class="text-xs text-left opacity-70 mt-4">
+					An exception is a time limited, approved decision not to fully meet a requirement.
+					It is valid for at most <span x-text="excSettings.max_validity_months || 'unlimited'"></span> months.
+				</div>
+			</div>
+			</div>
+		</div>
+		<div class="col-span-8 px-6 py-2 border rounded-tr-lg overflow-y-auto h-screen border-base-300">
+			<div class="overflow-x-auto">
+			  <div class="flex justify-between my-2">
+				<div class="flex flex-row gap-x-2 py-2 my-auto">
+					<span class="card-title" x-text="excScope === 'tenant' ? 'All Exceptions' : 'Exceptions'"></span>
+					<span class="pill text-ss bg-base-300" x-text="'Showing: '+filteredExceptions.length"></span>
+				</div>
+				<div class="flex flex-row gap-x-4">
+					<button @click="excSearch=''" x-show="excSearch.length>0" class="btn btn-xs btn-ghost border border-base-300 my-auto"><i class="ti ti-x text-error"></i></button>
+					<label class="input input-sm input-bordered flex items-center gap-2 my-auto">
+					  <input type="text" class="grow text-sm" x-model="excSearch" placeholder="Search title, asset, control" />
+					  <i class="ti ti-search opacity-70" :class="{'text-error': excSearch.length>0}"></i>
+					</label>
+					<button @click="openCreateException(false)" class="btn my-auto btn-sm btn-success">Create Exception</button>
+				</div>
+			  </div>
+
+			  {# summary strip: counted per level, never summed #}
+			  <div x-show="excSummary && excSummary.total > 0" class="grid grid-cols-4 gap-3 mb-4 text-left">
+				<div class="border border-base-300 rounded-lg p-3 bg-base-200 hover:cursor-pointer" @click="excFilter = {state: 'active', risk: null}">
+					<div class="text-xs font-semibold opacity-70">Active</div>
+					<div class="text-2xl font-semibold" x-text="excSummary?.by_state.active"></div>
+					<div class="flex flex-wrap gap-1 mt-1">
+						<template x-for="level in ['very high', 'high', 'low', 'very low']" :key="level">
+							<span x-show="excSummary?.active_by_level[level]" :class="excLevelClass(level)" class="px-1 rounded text-ss text-white uppercase" x-text="excSummary?.active_by_level[level] + ' ' + level"></span>
+						</template>
+					</div>
+				</div>
+				<div class="border border-base-300 rounded-lg p-3 bg-base-200 hover:cursor-pointer" @click="excFilter = {state: 'submitted', risk: null}">
+					<div class="text-xs font-semibold opacity-70">Awaiting approval</div>
+					<div class="text-2xl font-semibold" :class="{'text-warning': excSummary?.by_state.submitted}" x-text="excSummary?.by_state.submitted"></div>
+				</div>
+				<div class="border border-base-300 rounded-lg p-3 bg-base-200 hover:cursor-pointer" @click="excFilter = {state: 'expiring', risk: null}">
+					<div class="text-xs font-semibold opacity-70" x-text="'Expiring within ' + (excSummary?.expiring_soon_days) + ' days'"></div>
+					<div class="text-2xl font-semibold" :class="{'text-warning': excSummary?.expiring_soon}" x-text="excSummary?.expiring_soon"></div>
+				</div>
+				<div class="border border-base-300 rounded-lg p-3 bg-base-200 hover:cursor-pointer" @click="excFilter = {state: 'expired', risk: null}">
+					<div class="text-xs font-semibold opacity-70">Expired (not renewed or closed)</div>
+					<div class="text-2xl font-semibold" :class="{'text-error': excSummary?.by_state.expired}" x-text="excSummary?.by_state.expired"></div>
+				</div>
+			  </div>
+
+			  <div x-show="excLoading">
+				<div class="hero bg-base-200 min-h-[60vh]"><div class="hero-content text-center"><span class="loading loading-dots loading-lg"></span></div></div>
+			  </div>
+
+			  <div x-show="!excLoading && filteredExceptions.length===0">
+				<div class="hero bg-base-200 min-h-[60vh]">
+				  <div class="hero-content text-center">
+					<div class="max-w-md">
+					  <h1 class="text-2xl font-semibold">No Exceptions</h1>
+					  <p x-show="!excHasFilter()" class="py-4">
+						Document deviations from hardening, patching or policy requirements here,
+						get them approved and link them to the controls and risks they affect.
+					  </p>
+					  <button x-show="!excHasFilter()" @click="openCreateException(false)" class="btn btn-sm btn-success">Create Exception</button>
+					  <p x-show="excHasFilter()" class="py-4">The filter you applied does not match any exception.</p>
+					  <button x-show="excHasFilter()" @click="excClearFilter" class="btn btn-sm btn-error">Remove Filter</button>
+					</div>
+				  </div>
+				</div>
+			  </div>
+
+			  <div x-show="!excLoading && filteredExceptions.length>0">
+				<table class="table">
+				  <thead>
+					<tr>
+					  <th class="p-4 bg-base-200 rounded-tl-lg">State</th>
+					  <th class="p-4 bg-base-200">Title</th>
+					  <th class="p-4 bg-base-200" x-show="excScope === 'tenant'">Project</th>
+					  <th class="p-4 bg-base-200">Level</th>
+					  <th class="p-4 bg-base-200">Expires</th>
+					  <th class="p-4 bg-base-200">Owner</th>
+					  <th class="p-4 bg-base-200">Controls</th>
+					  <th class="p-4 bg-base-200">Risks</th>
+					  <th class="p-4 bg-base-200 rounded-tr-lg w-1">Open</th>
+					</tr>
+				  </thead>
+				  <tbody class="border border-base-300 px-1">
+					<template x-for="exc in filteredExceptions" :key="exc.id">
+					  <tr :class="{'opacity-60': exc.state==='closed' || exc.state==='rejected'}">
+						<td class="whitespace-nowrap">
+							<span :class="excStateClass(exc.state)" class="p-1 px-2 rounded-lg uppercase text-ss" x-text="excStateLabels[exc.state]"></span>
+						</td>
+						<td @click="openExceptionDrawer(exc)" class="text-left hover:cursor-pointer hover:opacity-75">
+							<div class="min-w-48"></div>
+							<span class="underline" x-text="exc.title"></span>
+							<span x-show="!exc.project_id && excScope !== 'tenant'" class="badge badge-outline badge-sm ml-1" title="Organisation level exception linked to this project">Organisation</span>
+							<div class="text-xs opacity-60" x-show="exc.affected_assets" x-text="exc.affected_assets"></div>
+						</td>
+						<td x-show="excScope === 'tenant'" class="text-xs text-left">
+							<a x-show="exc.project_id" :href="'/projects/' + exc.project_id + '?tab=exceptions'" class="underline hover:opacity-75" x-text="exc.project"></a>
+							<span x-show="!exc.project_id" class="italic opacity-80">Organisation</span>
+						</td>
+						<td>
+							<span :class="excLevelClass(exc.risk)" class="p-1 px-2 rounded-lg uppercase text-ss text-white whitespace-nowrap" x-text="exc.risk"></span>
+						</td>
+						<td class="whitespace-nowrap">
+							<span class="text-xs" :class="{'text-error font-semibold': exc.state==='expired', 'text-warning font-semibold': exc.expiring_soon}" x-text="excExpiryText(exc)"></span>
+							<i x-show="exc.state==='expired'" class="ti ti-alert-triangle text-error text-xs" title="Expired"></i>
+						</td>
+						<td class="text-xs" :title="exc.assignee_email" x-text="exc.assignee_email ? exc.assignee_email.split('@')[0] : '-'"></td>
+						<td>
+							<template x-if="!exc.links || exc.links.length===0">
+								<span class="text-xs opacity-50">-</span>
+							</template>
+							<div class="flex flex-wrap gap-1">
+								<template x-for="link in (exc.links || []).slice(0, 3)" :key="link.id">
+									<a :href="link.url" :title="link.project + ' / ' + link.framework + ' / ' + link.name" class="badge badge-outline badge-sm hover:opacity-75" x-text="link.ref_code"></a>
+								</template>
+								<button x-show="exc.links && exc.links.length>3" @click="openExceptionDrawer(exc); changeExcTab('links')" class="badge badge-sm" x-text="'+' + (exc.links.length-3)"></button>
+							</div>
+						</td>
+						<td>
+							<span x-show="exc.risks && exc.risks.length" class="badge badge-outline badge-sm gap-1" :title="(exc.risks || []).map(r => r.title).join(', ')"><i class="ti ti-alert-circle text-xs"></i><span x-text="exc.risks.length"></span></span>
+							<span x-show="!exc.risks || !exc.risks.length" class="text-xs opacity-50">-</span>
+						</td>
+						<td>
+							<button @click="openExceptionDrawer(exc)" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-arrow-right"></i></button>
+						</td>
+					  </tr>
+					</template>
+				  </tbody>
+				</table>
+			  </div>
+			</div>
+		</div>
+	</div>
+</div>

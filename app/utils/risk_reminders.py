@@ -1,5 +1,6 @@
 """
-Email reminders for risks: next review date and due date.
+Email reminders for risks (next review date and due date) and for approved
+exceptions (expiry date).
 
 Run once a day from outside the app (cron / systemd timer / docker exec):
 
@@ -17,6 +18,9 @@ Rules (all configurable in .env, see .env.example):
     assignee, project_managers, tenant_owner, risk_managers or fixed email addresses.
     When To resolves to nobody for a risk, RISK_REMINDER_FALLBACK_TO is used.
   * Reminders that were sent are stored in risk_reminders, so nothing is sent twice.
+  * Approved exceptions are reminded about their expiry date with the same rules and
+    recipients (assignee = owner of the exception), stored in exception_reminders.
+    EXCEPTION_REMINDERS_ENABLED=false turns this off.
 
 Only standard library imports at module level so the rules can be tested alone.
 """
@@ -27,8 +31,8 @@ from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
-TOKENS = ("assignee", "project_managers", "tenant_owner", "risk_managers")
-KIND_LABELS = {"review": "Review due", "due": "Due date"}
+TOKENS = ("assignee", "project_managers", "tenant_owner", "risk_managers", "ciso")
+KIND_LABELS = {"review": "Review due", "due": "Due date", "expiry": "Exception expires"}
 
 
 def parse_tokens(value):
@@ -73,13 +77,27 @@ def render_message(items, base_url):
     """-> (subject, text body, html body) for a list of reminder items."""
     items = sorted(items, key=lambda i: (i["days_left"] >= 0, i["target"], i["title"]))
     overdue = sum(1 for i in items if i["days_left"] < 0)
-    subject = "Risk reminder: %d risk%s need%s attention" % (
-        len(items),
-        "" if len(items) == 1 else "s",
-        "s" if len(items) == 1 else "",
-    )
+    n_exc = sum(1 for i in items if i.get("type") == "exception")
+    n_risk = len(items) - n_exc
+    if not n_exc:
+        subject = "Risk reminder: %d risk%s need%s attention" % (
+            len(items),
+            "" if len(items) == 1 else "s",
+            "s" if len(items) == 1 else "",
+        )
+    else:
+        parts = []
+        if n_risk:
+            parts.append("%d risk%s" % (n_risk, "" if n_risk == 1 else "s"))
+        parts.append("%d exception%s" % (n_exc, "" if n_exc == 1 else "s"))
+        subject = "%s reminder: %s need%s attention" % (
+            "Risk and exception" if n_risk else "Exception",
+            " and ".join(parts),
+            "s" if len(items) == 1 else "",
+        )
     if overdue:
         subject += " (%d overdue)" % overdue
+    what = "risks" if not n_exc else ("exceptions" if not n_risk else "risks and exceptions")
 
     def when(item):
         d = item["days_left"]
@@ -92,7 +110,7 @@ def render_message(items, base_url):
     def link(item):
         return (base_url.rstrip("/") + item["path"]) if base_url and item.get("path") else None
 
-    text = ["The following risks need your attention:", ""]
+    text = ["The following %s need your attention:" % what, ""]
     rows = []
     for item in items:
         line = "- %s [%s]: %s, %s" % (
@@ -119,10 +137,10 @@ def render_message(items, base_url):
             )
         )
     html_body = (
-        "<p>The following risks need your attention:</p>"
+        "<p>The following %s need your attention:</p>"
         '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse">'
-        "<tr><th>Risk</th><th>Level</th><th>What</th><th>Date</th><th>Where</th></tr>%s</table>"
-        % "".join(rows)
+        "<tr><th>%s</th><th>Level</th><th>What</th><th>Date</th><th>Where</th></tr>%s</table>"
+        % (what, "Risk" if not n_exc else ("Exception" if not n_risk else "Item"), "".join(rows))
     )
     return subject, "\n".join(text), html_body
 
@@ -131,6 +149,12 @@ def _risk_path(risk):
     if risk.project_id:
         return "/projects/%s?tab=%s" % (risk.project_id, quote("risk register"))
     return "/tenants/%s/risk" % risk.tenant_id
+
+
+def _exception_path(exc):
+    if exc.project_id:
+        return "/projects/%s?tab=exceptions&exception-id=%s" % (exc.project_id, exc.id)
+    return "/tenants/%s/exceptions?exception-id=%s" % (exc.tenant_id, exc.id)
 
 
 def _emails_for_token(token, risk, models):
@@ -151,10 +175,10 @@ def _emails_for_token(token, risk, models):
     elif token == "tenant_owner":
         users = [models.User.query.get(risk.tenant.owner_id)]
     elif token == "risk_managers":
-        for mapping in models.UserRole.get_mappings_for_role_in_tenant(
-            "riskmanager", risk.tenant_id
-        ):
-            users.append(models.User.query.get(mapping.user_id))
+        # roles live on the tenant membership (the old UserRole table is empty)
+        users = list(risk.tenant.users_with_role("riskmanager"))
+    elif token == "ciso":
+        users = list(risk.tenant.users_with_role("ciso"))
     return [u.email for u in users if u and u.email and u.is_active]
 
 
@@ -240,6 +264,7 @@ def run(app, dry_run=False, today=None, out=print):
                 where = "Project: %s" % project.name if project else None
             group["items"].append(
                 {
+                    "type": "risk",
                     "title": risk.title,
                     "level": risk.risk,
                     "kind": kind,
@@ -251,12 +276,61 @@ def run(app, dry_run=False, today=None, out=print):
             )
             group["reminders"].append((risk, kind, target))
 
+    if str(cfg.get("EXCEPTION_REMINDERS_ENABLED", True)).lower() not in ("false", "0", "no"):
+        E = models.PolicyException
+        exceptions = (
+            E.query.filter(E.status == "approved").filter(E.expiry_date.isnot(None)).all()
+        )
+        for exc in exceptions:
+            kind, target = "expiry", exc.expiry_date
+            last = (
+                db.session.query(db.func.max(models.ExceptionReminder.sent_on))
+                .filter(models.ExceptionReminder.exception_id == exc.id)
+                .filter(models.ExceptionReminder.kind == kind)
+                .filter(models.ExceptionReminder.target_date == target)
+                .scalar()
+            )
+            if not reminder_state(target, today, days_before, repeat_days, last):
+                continue
+            to = resolve_recipients(to_tokens, exc, models, exclude_domains) or resolve_recipients(
+                fallback_tokens, exc, models, exclude_domains
+            )
+            if not to:
+                skipped_no_recipient += 1
+                out("[WARNING] No recipient for exception %r (%s) - skipped" % (exc.title, kind))
+                continue
+            cc = [
+                e for e in resolve_recipients(cc_tokens, exc, models, exclude_domains)
+                if e.lower() not in [t.lower() for t in to]
+            ]
+            key = group_key(to, cc)
+            group = groups.setdefault(
+                key, {"to": to, "cc": cc, "items": [], "reminders": [], "tenant": exc.tenant_id}
+            )
+            where = "Organisation"
+            if exc.project_id:
+                project = models.Project.query.get(exc.project_id)
+                where = "Project: %s" % project.name if project else None
+            group["items"].append(
+                {
+                    "type": "exception",
+                    "title": exc.title,
+                    "level": exc.risk,
+                    "kind": kind,
+                    "target": target.isoformat(),
+                    "days_left": (target - today).days,
+                    "path": _exception_path(exc),
+                    "where": where,
+                }
+            )
+            group["reminders"].append((exc, kind, target))
+
     sent = failed = 0
     for group in groups.values():
         subject, text_body, html_body = render_message(group["items"], base_url)
         label = "to %s%s" % (", ".join(group["to"]), (" cc " + ", ".join(group["cc"])) if group["cc"] else "")
         if dry_run:
-            out("[DRY RUN] %s - %s (%d risk%s)" % (label, subject, len(group["items"]), "" if len(group["items"]) == 1 else "s"))
+            out("[DRY RUN] %s - %s (%d item%s)" % (label, subject, len(group["items"]), "" if len(group["items"]) == 1 else "s"))
             for item in group["items"]:
                 out("          - %s: %s %s (%+d days)" % (item["title"], KIND_LABELS[item["kind"]], item["target"], item["days_left"]))
             continue
@@ -277,19 +351,31 @@ def run(app, dry_run=False, today=None, out=print):
                 metadata={"count": len(group["items"]), "label": label[:200]},
             )
             continue
-        for risk, kind, target in group["reminders"]:
+        recipients = ", ".join(group["to"] + group["cc"])[:500]
+        for record, kind, target in group["reminders"]:
+            if kind == "expiry":
+                db.session.add(
+                    models.ExceptionReminder(
+                        exception_id=record.id,
+                        kind=kind,
+                        target_date=target,
+                        sent_on=today,
+                        recipients=recipients,
+                    )
+                )
+                continue
             db.session.add(
                 models.RiskReminder(
-                    risk_id=risk.id,
+                    risk_id=record.id,
                     kind=kind,
                     target_date=target,
                     sent_on=today,
-                    recipients=", ".join(group["to"] + group["cc"])[:500],
+                    recipients=recipients,
                 )
             )
         db.session.commit()
         sent += 1
-        out("[INFO] Sent %s (%d risk%s)" % (label, len(group["items"]), "" if len(group["items"]) == 1 else "s"))
+        out("[INFO] Sent %s (%d item%s)" % (label, len(group["items"]), "" if len(group["items"]) == 1 else "s"))
         log_event(
             "risk_reminder_sent",
             tenant=group["tenant"],
@@ -297,7 +383,7 @@ def run(app, dry_run=False, today=None, out=print):
         )
 
     out(
-        "[INFO] Risk reminders: %d mail%s %s, %d failed, %d risk%s without recipient"
+        "[INFO] Reminders: %d mail%s %s, %d failed, %d item%s without recipient"
         % (
             len(groups) if dry_run else sent,
             "" if (len(groups) if dry_run else sent) == 1 else "s",

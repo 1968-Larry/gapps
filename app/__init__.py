@@ -157,6 +157,10 @@ def configure_errors(app):
     def client_error(e):
         return handle_error(e, "Client: bad request")
 
+    @app.errorhandler(409)
+    def conflict(e):
+        return handle_error(e, "Conflict")
+
     @app.errorhandler(404)
     def not_found(e):
         return handle_error(e, "Not found")

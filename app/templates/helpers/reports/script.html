@@ -1,0 +1,364 @@
+<script>
+/*
+ * Reports for the project page, built in the browser with jsPDF + autotable
+ * (like the Executive / Technical reports) and as CSV for Excel.
+ * Merged into project() with {...reportsMixin(), ...}; uses this.projectData,
+ * this.projectUsers, this.risks, this.exceptions and this.excStateLabels.
+ *
+ * CSV: semicolon separated with a UTF-8 BOM, so Excel with Swedish (and most
+ * European) settings opens it in columns with the right characters.
+ */
+function reportsMixin() {
+	return {
+		reportBusy: false,
+		rptColor: [54, 69, 79],
+		rptLevelColors: {
+			"very high": [185, 28, 28], "high": [220, 38, 38], "low": [202, 138, 4],
+			"very low": [22, 163, 74], "unknown": [100, 116, 139],
+		},
+
+		// -- shared building blocks ------------------------------------------------
+		async rptStart(title, subtitle, landscape = false) {
+			const { jsPDF } = window.jspdf
+			const doc = new jsPDF({orientation: landscape ? "landscape" : "portrait"})
+			const pageWidth = doc.internal.pageSize.getWidth()
+			try {
+				const img = await loadImage("/static/img/icon.png")
+				doc.addImage(await imageToBase64(img), "PNG", 15, 12, 10, 10)
+			} catch (e) { /* the logo is optional */ }
+			doc.setTextColor(...this.rptColor)
+			doc.setFont("helvetica", "bold")
+			doc.setFontSize(18)
+			doc.text(title, 30, 20)
+			doc.setFont("helvetica", "normal")
+			doc.setFontSize(9)
+			doc.text(subtitle, 30, 26)
+			doc.setDrawColor(200)
+			doc.line(15, 30, pageWidth - 15, 30)
+			return {doc: doc, y: 38, title: title}
+		},
+		rptHeading(ctx, text, paragraph = null) {
+			const doc = ctx.doc
+			if (ctx.y > doc.internal.pageSize.getHeight() - 40) {
+				doc.addPage()
+				ctx.y = 20
+			}
+			doc.setTextColor(...this.rptColor)
+			doc.setFont("helvetica", "bold")
+			doc.setFontSize(13)
+			doc.text(text, 15, ctx.y)
+			ctx.y += 6
+			if (paragraph) {
+				doc.setFont("helvetica", "normal")
+				doc.setFontSize(9)
+				const lines = doc.splitTextToSize(paragraph, doc.internal.pageSize.getWidth() - 30)
+				doc.text(lines, 15, ctx.y)
+				ctx.y += lines.length * 4.2 + 1
+			}
+		},
+		// a row of small boxes: [[label, value, color?], ...]
+		rptStats(ctx, stats) {
+			const doc = ctx.doc
+			const width = doc.internal.pageSize.getWidth() - 30
+			const gap = 4
+			const box = (width - gap * (stats.length - 1)) / stats.length
+			stats.forEach(([label, value, color], i) => {
+				const x = 15 + i * (box + gap)
+				doc.setDrawColor(225)
+				doc.setFillColor(248, 249, 250)
+				doc.roundedRect(x, ctx.y, box, 17, 2, 2, "FD")
+				doc.setFont("helvetica", "normal")
+				doc.setFontSize(7.5)
+				doc.setTextColor(110)
+				doc.text(String(label), x + 3, ctx.y + 5.5)
+				doc.setFont("helvetica", "bold")
+				doc.setFontSize(14)
+				doc.setTextColor(...(color || this.rptColor))
+				doc.text(String(value), x + 3, ctx.y + 13.5)
+			})
+			doc.setTextColor(...this.rptColor)
+			ctx.y += 23
+		},
+		rptTable(ctx, head, body, options = {}) {
+			ctx.doc.autoTable({
+				head: [head],
+				body: body,
+				startY: ctx.y,
+				margin: {left: 15, right: 15, top: 20, bottom: 18},
+				theme: "grid",
+				rowPageBreak: "avoid",  // never split a row over two pages
+				headStyles: {fillColor: [241, 243, 245], textColor: this.rptColor, fontStyle: "bold", lineWidth: 0},
+				styles: {fontSize: 8, cellPadding: 2, lineColor: [230, 230, 230], textColor: this.rptColor, valign: "top", overflow: "linebreak"},
+				...options,
+			})
+			ctx.y = ctx.doc.lastAutoTable.finalY + 9
+		},
+		// colours a cell whose text is a risk level
+		rptLevelCell(data, columnIndex) {
+			if (data.section === "body" && data.column.index === columnIndex) {
+				const level = String(data.cell.raw || "").toLowerCase()
+				if (this.rptLevelColors[level]) {
+					data.cell.styles.textColor = this.rptLevelColors[level]
+					data.cell.styles.fontStyle = "bold"
+				}
+			}
+		},
+		rptFinish(ctx, filename) {
+			const doc = ctx.doc
+			const pages = doc.getNumberOfPages()
+			const width = doc.internal.pageSize.getWidth()
+			const height = doc.internal.pageSize.getHeight()
+			const now = new Date()
+			const pad = n => String(n).padStart(2, "0")
+			const stamp = "Generated " + this.rptToday() + " " + pad(now.getHours()) + ":" + pad(now.getMinutes()) +
+				" by {{ current_user.email|e }}"
+			for (let i = 1; i <= pages; i++) {
+				doc.setPage(i)
+				doc.setFont("helvetica", "normal")
+				doc.setFontSize(7.5)
+				doc.setTextColor(140)
+				doc.text(ctx.title + " - " + (this.projectData.name || "") + " - " + stamp, 15, height - 8)
+				doc.text("Page " + i + " of " + pages, width - 15, height - 8, {align: "right"})
+			}
+			doc.save(filename)
+		},
+		rptCsv(filename, headers, rows) {
+			const esc = v => {
+				const s = (v === null || v === undefined) ? "" : String(v)
+				return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+			}
+			const lines = [headers.map(esc).join(";"), ...rows.map(r => r.map(esc).join(";"))]
+			const blob = new Blob(["﻿" + lines.join("\r\n")], {type: "text/csv;charset=utf-8;"})
+			const a = document.createElement("a")
+			a.href = URL.createObjectURL(blob)
+			a.download = filename
+			document.body.appendChild(a)
+			a.click()
+			document.body.removeChild(a)
+		},
+		rptToday() {
+			// local date (toISOString would give the UTC date)
+			const d = new Date()
+			const pad = n => String(n).padStart(2, "0")
+			return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+		},
+		rptFileName(kind, ext) {
+			const name = (this.projectData.name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+			return `${kind}-${name}-${this.rptToday()}.${ext}`
+		},
+		rptSubtitle() {
+			return (this.projectData.name || "") + "  |  " + ((this.projectData.framework || "").toUpperCase()) +
+				"  |  " + this.rptToday()
+		},
+		rptEmail(id) {
+			if (!id) return ""
+			const u = (this.projectUsers || []).find(x => x.id === id)
+			return u ? u.email : ""
+		},
+		rptRun(fn) {
+			if (this.reportBusy) return
+			this.reportBusy = true
+			Promise.resolve()
+				.then(() => fn())
+				.catch(e => { console.error(e); toast("Could not create the report: " + e.message, "error") })
+				.finally(() => { this.reportBusy = false })
+		},
+		rptLoadSoa() {
+			return new Promise((resolve, reject) => {
+				request("GET", `/api/v1/projects/${this.projectId}/reports/soa`,
+					data => resolve(data), error => reject(new Error(error.message || "request failed")))
+			})
+		},
+
+		// -- Statement of Applicability -----------------------------------------------
+		soaReport(format) {
+			this.rptRun(async () => {
+				const data = await this.rptLoadSoa()
+				const nested = r => r.same_as_control || String(r.ref || "").startsWith(String(r.control_ref || "") + ".")
+				const ctrl = r => nested(r) ? `${r.ref} ${r.name}` : `${r.ref} ${r.name}\n(${r.control_ref} ${r.control})`
+				const excText = r => r.exceptions.map(e => `${e.title} [${e.state}${e.expiry_date ? ", until " + e.expiry_date : ""}]`).join("\n")
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("soa", "csv"),
+						["Framework", "Ref", "Control", "Parent control", "Applicable", "Implementation", "Implemented %",
+						 "Justification / implementation", "Owner", "Evidence", "Exceptions", "Linked risks", "Ticket"],
+						data.rows.map(r => [r.framework, r.ref, r.name, r.same_as_control ? "" : `${r.control_ref} ${r.control}`,
+							r.applicable ? "Yes" : "No", r.implementation, r.implemented, r.justification, r.owner,
+							r.evidence, excText(r), r.risks, r.ticket_number]))
+					return
+				}
+				const s = data.summary
+				const ctx = await this.rptStart("Statement of Applicability", this.rptSubtitle(), true)
+				this.rptStats(ctx, [
+					["Controls", s.total], ["Applicable", s.applicable], ["Not applicable", s.not_applicable],
+					["Fully implemented", s.fully_implemented, [22, 163, 74]],
+					["Partially implemented", s.partially_implemented, [202, 138, 4]],
+					["Not implemented", s.not_implemented, s.not_implemented ? [220, 38, 38] : null],
+					["With active exception", s.with_active_exception],
+				])
+				if (s.without_justification) {
+					ctx.doc.setFontSize(8.5)
+					ctx.doc.setTextColor(220, 38, 38)
+					ctx.doc.text(`${s.without_justification} control(s) are marked not applicable without a justification.`, 15, ctx.y - 3)
+					ctx.y += 4
+				}
+				this.rptHeading(ctx, "Controls",
+					"Every control of the project: whether it is applicable, how far it is implemented, the justification for " +
+					"including or excluding it, the owner, the evidence and the exceptions that currently apply.")
+				const body = []
+				let group = null
+				for (const r of data.rows) {
+					const key = r.framework + "|" + r.control_ref
+					if (nested(r) && !r.same_as_control && key !== group) {
+						body.push([{content: `${r.control_ref} ${r.control}`, colSpan: 7,
+							styles: {fontStyle: "bold", fillColor: [248, 249, 250]}}])
+					}
+					group = key
+					body.push([ctrl(r), r.applicable ? "Yes" : "No",
+						r.applicable ? `${r.implementation} (${r.implemented}%)` : "-",
+						r.justification || (r.applicable ? "" : "MISSING"), (r.owner || "").split("@")[0], r.evidence, excText(r)])
+				}
+				this.rptTable(ctx,
+					["Control", "Applicable", "Implementation", "Justification / implementation", "Owner", "Evid.", "Exceptions"],
+					body,
+					{
+						columnStyles: {0: {cellWidth: 62}, 1: {cellWidth: 18, halign: "center"}, 2: {cellWidth: 32},
+							3: {cellWidth: 75}, 4: {cellWidth: 25}, 5: {cellWidth: 11, halign: "center"}, 6: {cellWidth: 44}},
+						didParseCell: d => {
+							if (d.section !== "body") return
+							if (d.column.index === 1 && d.cell.raw === "No") d.cell.styles.textColor = [120, 120, 120]
+							if (d.column.index === 3 && d.cell.raw === "MISSING") {
+								d.cell.styles.textColor = [220, 38, 38]; d.cell.styles.fontStyle = "bold"
+							}
+						},
+					})
+				this.rptFinish(ctx, this.rptFileName("soa", "pdf"))
+			})
+		},
+
+		// -- Risk register ---------------------------------------------------------------
+		riskRegisterReport(format) {
+			this.rptRun(async () => {
+				const levels = ["very high", "high", "low", "very low", "unknown"]
+				const order = r => levels.indexOf(r.risk) < 0 ? 9 : levels.indexOf(r.risk)
+				const risks = [...(this.risks || [])].sort((a, b) =>
+					(["mitigated", "accepted"].includes(a.status) - ["mitigated", "accepted"].includes(b.status)) || (order(a) - order(b)))
+				const assess = r => (r.likelihood && r.impact) ? `${r.likelihood} x ${r.impact} = ${r.likelihood * r.impact}` : ""
+				const controls = r => (r.links || []).map(l => l.ref_code).join(", ")
+				const excs = r => (r.exceptions || []).map(e => `${e.title} [${e.state}]`).join("\n")
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("risk-register", "csv"),
+						["Title", "Level", "Likelihood", "Impact", "Score", "Status", "Priority", "Owner", "Next review",
+						 "Review overdue", "Due date", "Ticket", "Description", "Remediation", "Controls", "Exceptions"],
+						risks.map(r => [r.title, r.risk, r.likelihood, r.impact, r.score, r.status, r.priority, this.rptEmail(r.assignee),
+							r.review_date, r.review_overdue ? "yes" : "", r.due_date, r.ticket_number, r.description,
+							r.remediation, controls(r), excs(r)]))
+					return
+				}
+				const open = risks.filter(r => !["mitigated", "accepted"].includes(r.status))
+				const ctx = await this.rptStart("Risk Register", this.rptSubtitle(), true)
+				this.rptStats(ctx, [
+					["Risks", risks.length], ["Open", open.length],
+					...levels.slice(0, 4).map(l => ["Open " + l, open.filter(r => r.risk === l).length, this.rptLevelColors[l]]),
+					["Review overdue", open.filter(r => r.review_overdue).length, open.some(r => r.review_overdue) ? [220, 38, 38] : null],
+					["Accepted", risks.filter(r => r.status === "accepted").length],
+				])
+				this.rptHeading(ctx, "Risks",
+					"Open risks first, highest level first. Level = likelihood x impact on the 4x4 scale " +
+					"(1-2 very low, 3-6 low, 8-9 high, 12-16 very high).")
+				this.rptTable(ctx,
+					["Risk", "Level", "L x I", "Status", "Owner", "Next review", "Treatment", "Controls / exceptions"],
+					risks.map(r => [r.title + (r.description ? "\n" + r.description : ""), r.risk, assess(r), r.status.replace("_", " "),
+						this.rptEmail(r.assignee).split("@")[0], (r.review_date || "") + (r.review_overdue ? " (overdue)" : ""),
+						r.remediation || "", [controls(r), excs(r)].filter(Boolean).join("\n")]),
+					{
+						columnStyles: {0: {cellWidth: 70}, 1: {cellWidth: 18}, 2: {cellWidth: 18}, 3: {cellWidth: 20},
+							4: {cellWidth: 25}, 5: {cellWidth: 22}, 6: {cellWidth: 52}, 7: {cellWidth: 42}},
+						didParseCell: d => {
+							this.rptLevelCell(d, 1)
+							if (d.section === "body" && d.column.index === 5 && String(d.cell.raw).includes("overdue"))
+								d.cell.styles.textColor = [220, 38, 38]
+						},
+					})
+				this.rptFinish(ctx, this.rptFileName("risk-register", "pdf"))
+			})
+		},
+
+		// -- Exception register ------------------------------------------------------------
+		exceptionRegisterReport(format) {
+			this.rptRun(async () => {
+				const stateOrder = ["expired", "submitted", "active", "draft", "rejected", "closed"]
+				const levels = ["very high", "high", "low", "very low", "unknown"]
+				const items = [...(this.exceptions || [])].sort((a, b) =>
+					(stateOrder.indexOf(a.state) - stateOrder.indexOf(b.state)) || (levels.indexOf(a.risk) - levels.indexOf(b.risk)))
+				const label = s => (this.excStateLabels || {})[s] || s
+				const controls = e => (e.links || []).map(l => (e.project_id ? "" : l.project + ": ") + l.ref_code).join(", ")
+				const decision = e => e.decided_by_email
+					? `${e.status === "rejected" ? "Rejected" : "Approved"} by ${e.decided_by_email.split("@")[0]} on ${e.decided_date}` +
+					  (e.decision_note ? `\n"${e.decision_note}"` : "")
+					: ""
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("exception-register", "csv"),
+						["Title", "Scope", "State", "Level", "Likelihood", "Impact", "Owner", "Requested by", "Submitted",
+						 "Decided by", "Decided", "Decision note", "Valid from", "Expiry date", "Days left", "Description",
+						 "Justification", "Compensating controls", "Affected assets", "Controls", "Risks", "Ticket"],
+						items.map(e => [e.title, e.project_id ? "Project" : "Organisation", label(e.state), e.risk, e.likelihood,
+							e.impact, e.assignee_email, e.requested_by_email, e.submitted_date, e.decided_by_email, e.decided_date,
+							e.decision_note, e.valid_from, e.expiry_date, e.days_left, e.description, e.justification,
+							e.compensating_controls, e.affected_assets, controls(e), (e.risks || []).map(r => r.title).join(", "),
+							e.ticket_number]))
+					return
+				}
+				const s = this.excSummary || {by_state: {}}
+				const ctx = await this.rptStart("Exception Register", this.rptSubtitle(), true)
+				this.rptStats(ctx, [
+					["Exceptions", items.length], ["Active", s.by_state.active || 0, [22, 163, 74]],
+					["Awaiting approval", s.by_state.submitted || 0, s.by_state.submitted ? [202, 138, 4] : null],
+					["Expiring within " + (s.expiring_soon_days || 30) + " days", s.expiring_soon || 0, s.expiring_soon ? [202, 138, 4] : null],
+					["Expired", s.by_state.expired || 0, s.by_state.expired ? [220, 38, 38] : null],
+					["Closed", s.by_state.closed || 0],
+				])
+				this.rptHeading(ctx, "Exceptions",
+					"Approved, time limited deviations from controls and policies that apply to this project, with the decision " +
+					"trail. Expired exceptions are listed first: they are neither renewed nor closed.")
+				this.rptTable(ctx,
+					["Exception", "State", "Level", "Valid", "Owner", "Decision", "Justification / compensating controls", "Controls"],
+					items.map(e => [e.title + (e.project_id ? "" : "\n(organisation level)") + (e.affected_assets ? "\nAssets: " + e.affected_assets : ""),
+						label(e.state), e.risk, `${e.valid_from || "from approval"}\n- ${e.expiry_date || "?"}`,
+						(e.assignee_email || "").split("@")[0], decision(e),
+						[e.justification, e.compensating_controls ? "Compensating: " + e.compensating_controls : ""].filter(Boolean).join("\n"),
+						controls(e)]),
+					{
+						columnStyles: {0: {cellWidth: 50}, 1: {cellWidth: 22}, 2: {cellWidth: 17}, 3: {cellWidth: 24},
+							4: {cellWidth: 26}, 5: {cellWidth: 45}, 6: {cellWidth: 58}, 7: {cellWidth: 25}},
+						didParseCell: d => {
+							this.rptLevelCell(d, 2)
+							if (d.section === "body" && d.column.index === 1) {
+								if (d.cell.raw === label("expired")) { d.cell.styles.textColor = [220, 38, 38]; d.cell.styles.fontStyle = "bold" }
+								if (d.cell.raw === label("submitted")) d.cell.styles.textColor = [202, 138, 4]
+							}
+						},
+					})
+				this.rptFinish(ctx, this.rptFileName("exception-register", "pdf"))
+			})
+		},
+
+		// -- extra sections for the existing Executive / Technical report -----------
+		rptExecRiskRows() {
+			const open = (this.risks || []).filter(r => !["mitigated", "accepted"].includes(r.status))
+			return ["very high", "high", "low", "very low", "unknown"]
+				.map(l => ({"LEVEL": l.toUpperCase(), "OPEN RISKS": open.filter(r => r.risk === l).length}))
+				.filter(r => r["OPEN RISKS"] > 0)
+		},
+		rptExecExceptionRows() {
+			const s = this.excSummary
+			if (!s || !s.total) return []
+			return [
+				{"STATE": "ACTIVE", "COUNT": s.by_state.active || 0},
+				{"STATE": "AWAITING APPROVAL", "COUNT": s.by_state.submitted || 0},
+				{"STATE": "EXPIRING WITHIN " + s.expiring_soon_days + " DAYS", "COUNT": s.expiring_soon || 0},
+				{"STATE": "EXPIRED", "COUNT": s.by_state.expired || 0},
+			]
+		},
+	}
+}
+</script>

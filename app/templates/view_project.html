@@ -314,6 +314,9 @@
 						  <button x-show="selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Risks ('+selectedSubControl.risks.length+')'"></span>
 						  </button>
+						  <button @click="changeSubControlTabInDrawer('exceptions')" :class="{'btn-active': activeSubSideTab==='exceptions'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							Exceptions<span x-show="selectedSubControl?.exceptions && selectedSubControl?.exceptions.length" class="ml-1" :class="{'text-success': selectedSubControl?.active_exceptions}" x-text="'(' + (selectedSubControl?.exceptions || []).length + ')'"></span>
+						  </button>
 						  <button @click="changeSubControlTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeSubSideTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100" x-text="'Comments ('+messagesForControl.length+')'"></button>
 						</div>
 					</div>
@@ -861,6 +864,7 @@
 						</div>
 
 					</div>
+					{% include "helpers/exceptions/subcontrol_tab.html" %}
 					<div x-show="activeSubSideTab==='comments'" class="flex-1 overflow-y-auto">
 						<div x-show="messagesForControl.length===0" class="flex-grow min-h-full hero-content text-center">
 							<div class="max-w-md">
@@ -926,6 +930,8 @@
 	</div>
 </div>
 
+{% include "helpers/exceptions/drawer.html" %}
+
 <!--    Drawer to view the selected reports-->
 <div class="drawer drawer-end z-50">
 	<input @change="closeReportDrawer" id="report-drawer" type="checkbox" class="drawer-toggle" />
@@ -990,7 +996,7 @@
 						<div role="tablist" class="tabs gap-x-2">
 					  <button @click="changeTabInDrawer('overview')" :class="{'btn-active': activeReportTab==='overview'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeReportTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Comments ('+riskMessages.length+')'"></button>
-					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+riskLinks.length+')'"></button>
+					  <button @click="changeTabInDrawer('links')" :class="{'btn-active': activeReportTab==='links'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50" x-text="'Linked to ('+(riskLinks.length + riskExceptions.length)+')'"></button>
 					  <button @click="changeTabInDrawer('history'); getHistory(selectedReport)" :class="{'btn-active': activeReportTab==='history'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100 text-sm hover:opacity-50">History</button>
 					</div>
 					</div>
@@ -1126,6 +1132,23 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 												<i class="ti ti-external-link text-xs"></i>
 											</a>
 										</td>
+									</tr>
+								</template>
+							</tbody>
+						</table>
+					</div>
+
+					<div x-show="activeReportTab==='links' && riskExceptions.length>0" class="card mt-6">
+						<h3 class="font-semibold mb-2">Exceptions</h3>
+						<table class="table table-sm">
+							<thead><tr><th>Exception</th><th>State</th><th>Level</th><th>Expires</th></tr></thead>
+							<tbody>
+								<template x-for="exc in riskExceptions" :key="exc.id">
+									<tr>
+										<td><a @click="openExceptionFromRisk(exc)" class="underline hover:cursor-pointer hover:opacity-75" x-text="exc.title"></a></td>
+										<td><span :class="excStateClass(exc.state)" class="pill whitespace-nowrap" x-text="excStateLabels[exc.state]"></span></td>
+										<td><span :class="excLevelClass(exc.risk)" class="pill" x-text="exc.risk"></span></td>
+										<td class="text-xs" x-text="excExpiryText(exc)"></td>
 									</tr>
 								</template>
 							</tbody>
@@ -1542,6 +1565,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						</h3>
 					  </div>
 					</div>
+					{% include "helpers/risks_summary.html" %}
+					{% include "helpers/exceptions/summary.html" %}
 					<div class="col-span-2 card border border-base-200 shadow-md bg-base-200 mb-20">
 						<div class="card-body text-sm">
 							<div class="flex flex-row mb-4">
@@ -2474,6 +2499,9 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							<ul>
 							  <li><a :class="{'text-primary': report==='executive'}" @click="report='executive'">Executive</a></li>
 							  <li><a :class="{'text-primary': report==='technical'}" @click="report='technical'">Technical (Recommended)</a></li>
+							  <li><a :class="{'text-primary': report==='soa'}" @click="report='soa'">Statement of Applicability</a></li>
+							  <li><a :class="{'text-primary': report==='risks'}" @click="report='risks'">Risk Register</a></li>
+							  <li><a :class="{'text-primary': report==='exceptions'}" @click="report='exceptions'">Exception Register</a></li>
 							</ul>
 						  </li>
 						</ul>
@@ -2489,7 +2517,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							<div x-show="report==='executive'" class="max-w-md">
 							  <h1 class="text-2xl font-bold">Executive Report</h1>
 							  <p class="py-6">
-								The executive report provides a breakdown of the current status of the compliance project.
+								The executive report provides a breakdown of the current status of the compliance project,
+								including open risks per level and the exceptions.
 							  </p>
 							  <button @click="generateExecReport" class="btn btn-primary">Download</button>
 							</div>
@@ -2499,6 +2528,43 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 								The technical report includes everything from the Executive report (summaries, etc), along with a list of all controls in the project and the progress.
 							  </p>
 							  <button @click="generateTechReport" class="btn btn-primary">Download</button>
+							</div>
+							<div x-show="report==='soa'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Statement of Applicability</h1>
+							  <p class="py-6">
+								Every control with whether it is applicable, how far it is implemented, the justification,
+								owner, evidence and the exceptions that apply. The document an ISO 27001 auditor asks for.
+								Controls marked not applicable without a justification are highlighted.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy" @click="soaReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy" @click="soaReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							</div>
+							<div x-show="report==='risks'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Risk Register</h1>
+							  <p class="py-6">
+								All risks of the project, open and highest level first: assessment (likelihood x impact),
+								status, owner, review dates, treatment and the controls and exceptions they are linked to.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy || !risks.length" @click="riskRegisterReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy || !risks.length" @click="riskRegisterReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							  <p x-show="!risks.length" class="text-sm opacity-70 mt-4">The project has no risks yet.</p>
+							</div>
+							<div x-show="report==='exceptions'" class="max-w-lg">
+							  <h1 class="text-2xl font-bold">Exception Register</h1>
+							  <p class="py-6">
+								All exceptions that apply to the project (its own and linked organisation exceptions) with
+								state, level, validity, justification, compensating controls and who approved them when.
+								Expired exceptions first.
+							  </p>
+							  <div class="flex gap-2 justify-center">
+								<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('pdf')" class="btn btn-primary">PDF</button>
+								<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('csv')" class="btn">CSV (Excel)</button>
+							  </div>
+							  <p x-show="!exceptions.length" class="text-sm opacity-70 mt-4">The project has no exceptions yet.</p>
 							</div>
 					    </div>
 					</div>
@@ -2788,7 +2854,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
                         <i x-show="report.review_overdue" class="ti ti-alert-triangle text-error text-xs" title="Review overdue"></i>
                     </td>
                     <td>
-									<template x-if="!report.links || report.links.length===0">
+									<template x-if="(!report.links || report.links.length===0) && (!report.exceptions || report.exceptions.length===0)">
 										<span class="text-xs opacity-50">-</span>
 									</template>
 									<template x-if="report.links && report.links.length===1">
@@ -2796,6 +2862,12 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 									</template>
 									<template x-if="report.links && report.links.length>1">
 										<button @click="openReportDrawer(report); changeTabInDrawer('links')" title="Show where this risk is linked" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
+									</template>
+									<template x-if="report.exceptions && report.exceptions.length===1">
+										<a :href="report.exceptions[0].url" :title="'Exception: ' + report.exceptions[0].title + ' (' + report.exceptions[0].state + ')'" :class="{'badge-error': report.exceptions[0].state==='expired', 'badge-warning': report.exceptions[0].state==='submitted'}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i>1</a>
+									</template>
+									<template x-if="report.exceptions && report.exceptions.length>1">
+										<button @click="openReportDrawer(report); changeTabInDrawer('links')" :title="'Exceptions: ' + report.exceptions.map(e => e.title + ' (' + e.state + ')').join(', ')" :class="{'badge-error': report.exceptions.some(e => e.state==='expired'), 'badge-warning': !report.exceptions.some(e => e.state==='expired') && report.exceptions.some(e => e.state==='submitted')}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i><span x-text="report.exceptions.length"></span></button>
 									</template>
 								</td>
 								<td>
@@ -2813,6 +2885,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 					</div>
 				</div>
 			</div>	
+
+			{% include "helpers/exceptions/tab.html" %}
 
 			<div class="col-span-6 text-center" x-show="selectedTab === 'audit review' && !tabLoading">
 				<div class="grid grid-cols-12 gap-4">
@@ -4013,6 +4087,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 		</div>
 	</div>
 
+	{% include "helpers/exceptions/modals.html" %}
+
 	<div class="modal" x-bind:class="{ 'modal-open': showRemoveRiskModal }">
 		<div class="modal-box">
 			<form method="dialog">
@@ -4554,6 +4630,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 {%endblock%}
 
 {%block extrajs%}
+{% include "helpers/exceptions/script.html" %}
+{% include "helpers/reports/script.html" %}
 <script>
 
 function loadImage(url) {
@@ -4575,6 +4653,8 @@ function imageToBase64(img) {
 
 function project(){
 	return {
+		...exceptionsMixin(),
+		...reportsMixin(),
 		init() {
 		  this.hasSidebar = false;
 		  if ("{{project.has_auditor(current_user)}}".toLowerCase() === "true") {
@@ -4648,6 +4728,7 @@ function project(){
 		  this.getProjectTags()
 		  this.loadRiskSettings()
 		  this.getRisks()
+		  this.initExceptions()
 		  this.getProjectEvidence()
 		  this.loadComments()
 		  var params = new window.URLSearchParams(window.location.search);
@@ -4696,6 +4777,7 @@ function project(){
 		subcontrolTab: "overview",
 		projectData: {},
 		projectId: "{{project.id}}",
+		excTenantId: "{{project.tenant_id}}",
 		isAuditor: false,
 		showPolicyModal: false,
 		showControlModal: false,
@@ -4725,7 +4807,7 @@ function project(){
 		reviewNote: "",
 		messagesForControl: [],
 		tenantPolicies: [],
-		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "users", "integrations", "report", "settings"],
+		tabs: ["summary", "controls", "policies", "evidence", "comments", "risk register", "exceptions", "users", "integrations", "report", "settings"],
 		loadingSkeleton: '<span class="loading loading-dots loading-lg"></span>',
 		tabLoading: true,
 		tableLoading: true,
@@ -5263,6 +5345,28 @@ function project(){
 				cursorY
 		    );
 		  }
+		  if (this.reportConfig.summary) {
+			const riskRows = this.rptExecRiskRows()
+			cursorY = this.renderReportSection(
+				doc,
+				`Open Risks`,
+				riskRows.length
+					? `Risks that are not mitigated or accepted, per level (likelihood x impact).`
+					: `There are no open risks in the project.`,
+				riskRows,
+				cursorY
+			);
+			const excRows = this.rptExecExceptionRows()
+			if (excRows.length) {
+				cursorY = this.renderReportSection(
+					doc,
+					`Exceptions`,
+					`Approved, time limited deviations from controls that apply to the project.`,
+					excRows,
+					cursorY
+				);
+			}
+		  }
 		  if (this.reportConfig.controls) {
 			  const allowedKeys = {
 				  name: "Name",
@@ -5467,6 +5571,7 @@ function project(){
         	}
 			this.riskMessages = report.comments;
 			this.getRiskLinks(report)
+			this.getRiskExceptions(report)
 			document.getElementById('report-drawer').checked = true;
         },		
 		openRiskFromSubControl: function(item) {

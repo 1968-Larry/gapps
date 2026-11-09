@@ -131,8 +131,12 @@
                                     <td>Grants access to view all resources without edit permissions</td>
                                   </tr>
                                   <tr>
-                                    <th>RiskManager</th>
-                                    <td>Full access to manage the Risk module (vendors, questionnaires, etc)</td>
+                                    <th>RiskManager<br><span class="text-xs font-normal opacity-70">Security manager</span></th>
+                                    <td>Full access to manage the Risk module (vendors, questionnaires, etc). Approves exceptions on the levels EXCEPTION_APPROVERS gives to riskmanager (default low and very low)</td>
+                                  </tr>
+                                  <tr>
+                                    <th>CISO</th>
+                                    <td>Reads every project in the tenant without being a member, manages the Risk module and approves exceptions of every level (default: high and very high need the CISO). Changes inside a project still need a project role</td>
                                   </tr>
                                   <tr>
                                     <th>RiskViewer</th>
@@ -502,7 +506,7 @@ function table(){
         },
         listActive: false,
         selectedString: '',
-        allRoles: ["admin","viewer","user","vendor","riskmanager","riskviewer"],
+        allRoles: ["admin","viewer","user","vendor","riskmanager","riskviewer","ciso"],
         selected: [],
         unselected: [],
         customTag: '',

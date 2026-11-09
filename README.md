@@ -21,6 +21,7 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - On-prem ADFS sign-in (OIDC) next to Google and Microsoft Entra ID (`ADFS_SERVER`)
 - JSON audit log in daily files with retention, bulk collapsing and whitelisted values only
 - Important audit events, including logins and logouts, are shown on the Logs page
+- Idle and absolute session timeouts with a "stay logged in" warning
 
 **Risk management**
 - 4x4 assessment: likelihood x impact calculates the risk level (very low, low, high, very high)
@@ -33,10 +34,51 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Daily email reminders to risk owners before review/due dates and when overdue; recipients (To/Cc)
   and timing are set in `.env` (`tools/send_risk_reminders.py`)
 
+**Exceptions (deviations)**
+- Exceptions tab in every project for approved, time limited deviations from controls, hardening,
+  patching or policies: description, justification, compensating controls, affected assets
+- Same 4x4 assessment as risks, owner, ticket number, valid from / expiry date (at most
+  `EXCEPTION_MAX_VALIDITY_MONTHS`). Active / expired follows from the expiry date
+- Approval flow: draft -> submitted -> approved / rejected -> closed. The level decides who
+  approves (`EXCEPTION_APPROVERS`, default: CISO for high and very high, security manager for low
+  and very low). A higher role may approve lower levels; never the person who requested it; admins
+  only when nobody else holds the required role
+- Changing an approved exception (assessment, dates, justification ...) asks for confirmation,
+  shows what changes and who must approve, and sends it back for approval to the role its new level
+  needs. The API refuses such a change (409) unless `confirm_resubmit` is sent
+- Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks; shown
+  both ways, including a badge in the risk tables (red when an exception has expired)
+- Organisation level exceptions (no project), like organisation level risks: can be attached to
+  sub-controls in every project and then show up in those projects
+- Collection page (menu: Risk > Exceptions) with every exception you may see, filter per state,
+  level and project
+- Change history, comments and audit log events (`exception_approved`, `exception_rejected`, ...)
+- Project summary: risks and exceptions counted per level (open / active, awaiting approval,
+  expiring soon, expired, overdue reviews). Exceptions do not change the implementation %
+- Expiry reminders by the same daily `tools/send_risk_reminders.py` run
+
+**Roles**
+- New tenant role `ciso`: reads every project of the organisation without being a member, works in
+  the risk module and approves exceptions of every level. Changes inside a project still need a
+  project role
+- `riskmanager` is shown as "Security manager" (the technical name is unchanged). Security managers
+  see and approve exceptions in every project
+- Fixed: the reminder recipient `risk_managers` (also the default fallback) found nobody, because it
+  read an old, unused role table. New recipient token `ciso`
+
 **Controls and evidence**
 - Custom controls and sub-controls: choose the reference code, rename, and add sub-controls
 - Ticket number on sub-controls and a link field on evidence
 - "Reload frameworks" for existing tenants
+
+**Reports (project > Report)**
+- Statement of Applicability: every control with applicability, implementation, justification,
+  owner, evidence and the exceptions that apply; controls excluded without a justification are
+  highlighted
+- Risk register and exception register (with the approval trail)
+- Each as PDF (landscape, page numbers, who generated it) and as CSV for Excel (semicolon separated,
+  UTF-8 with BOM)
+- The Executive / Technical report also show open risks per level and the exceptions
 
 **Reporting across projects**
 - Gaps page (menu: More > gaps): sub-controls grouped across all projects to show common gaps.
@@ -70,6 +112,49 @@ Project Overview          |
 Track Progress of Controls          |
 :-------------------------:|
 ![](img/gapps_3.PNG)  |
+
+#### Captures of the features added in this fork
+Screenshots with the demo data from `tools/seed_demo.py`.
+
+Project summary with risks and exceptions          |
+:-------------------------:|
+![](img/gapps_project_summary_risks_exceptions.png)  |
+
+Exceptions of a project          |
+:-------------------------:|
+![](img/gapps_exceptions_project.png)  |
+
+All exceptions of the organisation          |
+:-------------------------:|
+![](img/gapps_exceptions_all.png)  |
+
+Exception details          |
+:-------------------------:|
+![](img/gapps_exception_details.png)  |
+
+Level based approval (here by the CISO)          |
+:-------------------------:|
+![](img/gapps_exception_approval.png)  |
+
+Confirmation before an approved exception goes back for approval          |
+:-------------------------:|
+![](img/gapps_exception_resubmit.png)  |
+
+Exceptions on a sub-control          |
+:-------------------------:|
+![](img/gapps_subcontrol_exceptions.png)  |
+
+Exceptions linked to a risk          |
+:-------------------------:|
+![](img/gapps_risk_linked_exceptions.png)  |
+
+Statement of Applicability (PDF)          |
+:-------------------------:|
+![](img/gapps_report_soa.png)  |
+
+Exception register (PDF)          |
+:-------------------------:|
+![](img/gapps_report_exceptions.png)  |
 
 ### Getting Started
 
@@ -214,12 +299,17 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `AUDIT_LOG_ENABLED` / `AUDIT_LOG_PATH` / `AUDIT_LOG_RETENTION_DAYS` | `true` / `/var/log/app/audit.log` / `90` | JSON audit log, one file per day |
 | `AUDIT_GUI_ENABLED` / `AUDIT_GUI_RETENTION_DAYS` / `AUDIT_GUI_EVENTS` | `true` / `90` / built-in list | Events that are also shown on the Logs page |
 | `RISK_REVIEW_INTERVALS` | `very high=3,high=6,low=12,very low=12` | Months to the next review per risk level |
-| `RISK_REMINDER_TO` / `RISK_REMINDER_CC` | `assignee` / empty | Who gets the reminder: `assignee`, `project_managers`, `tenant_owner`, `risk_managers` or fixed email addresses (comma list) |
+| `RISK_REMINDER_TO` / `RISK_REMINDER_CC` | `assignee` / empty | Who gets the reminder: `assignee`, `project_managers`, `tenant_owner`, `risk_managers`, `ciso` or fixed email addresses (comma list) |
 | `RISK_REMINDER_FALLBACK_TO` | `risk_managers` | Used when the To list is empty for a risk (for example no assignee) |
 | `RISK_REMINDER_DAYS_BEFORE` | `7` | First reminder this many days before the review/due date |
 | `RISK_REMINDER_OVERDUE_REPEAT_DAYS` | `7` | Repeat every N days once overdue, `0` = never |
 | `RISK_REMINDER_EXCLUDE_DOMAINS` | `demo.example.com` | Never send reminders to these domains (protects the demo users) |
 | `APP_BASE_URL` | empty | Public address of the app, used for the links in the reminder mails |
+| `EXCEPTION_MAX_VALIDITY_MONTHS` | `12` | Longest validity of an exception from approval, `0` = no limit |
+| `EXCEPTION_EXPIRING_SOON_DAYS` | `30` | "Expiring soon" is shown this many days before the expiry date |
+| `EXCEPTION_APPROVERS` | `very high=ciso,high=ciso,low=riskmanager,very low=riskmanager` | Who approves each level: `project_manager`, `riskmanager` (Security manager) or `ciso`, from low to high. A higher role may approve lower levels; admins only when nobody else holds the role |
+| `EXCEPTION_ALLOW_SELF_APPROVAL` | `false` | Let the requester approve their own exception (only for one-person setups) |
+| `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
 
 ##### Risk reminder emails
 Reminders are sent by a small script that you run once a day from the docker host, for example from cron.
@@ -228,6 +318,7 @@ Try it first with `--dry-run`, which only shows what would be sent:
 docker exec app python3 tools/send_risk_reminders.py --dry-run
 30 7 * * *  docker exec app python3 tools/send_risk_reminders.py
 ```
+The same run reminds the owners of approved exceptions about the expiry date (`EXCEPTION_REMINDERS_ENABLED`).
 The normal `MAIL_*` settings are used. A reminder is sent once per risk, date and interval, so running the script
 more often does not send duplicates. The `tools/` folder is part of the image, rebuild it
 (`docker compose build app && docker compose up -d app`) after pulling.
@@ -241,7 +332,7 @@ Set `BACKUP_PASSPHRASE` to encrypt the configuration (it contains secrets) and `
 See the header of each script for all options. More in `db/README.md`.
 
 ##### Demo tenant with example data
-Creates a tenant called `demo` with fake users (`@demo.example.com`), 10 projects, subcontrol status, evidence and risks:
+Creates a tenant called `demo` with fake users (`@demo.example.com`), 10 projects, subcontrol status, evidence, risks and exceptions in every state:
 ```
 docker exec app python3 tools/seed_demo.py --frameworks iso_27001_2022
 docker exec app python3 tools/seed_demo.py --reset --frameworks iso_27001_2022    # delete and recreate

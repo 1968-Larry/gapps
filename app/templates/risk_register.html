@@ -75,7 +75,7 @@
 						<div role="tablist" class="tabs">
 					  <button @click="changeTabInDrawer('overview')" :class="{'border-b font-semibold border-primary': activeSideTab==='overview'}" role="tab" class="tab subtitle text-sm hover:opacity-50">Overview</button>
 					  <button @click="changeTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'border-b font-semibold border-primary': activeSideTab==='comments'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Comments ('+comments.length+')'"></button>
-					  <button @click="changeTabInDrawer('links')" :class="{'border-b font-semibold border-primary': activeSideTab==='links'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Linked to ('+links.length+')'"></button>
+					  <button @click="changeTabInDrawer('links')" :class="{'border-b font-semibold border-primary': activeSideTab==='links'}" role="tab" class="tab subtitle text-sm hover:opacity-50" x-text="'Linked to ('+(links.length + (selectedReport.exceptions || []).length)+')'"></button>
 					  <button @click="changeTabInDrawer('history'); getHistory(selectedReport)" :class="{'border-b font-semibold border-primary': activeSideTab==='history'}" role="tab" class="tab subtitle text-sm hover:opacity-50">History</button>
 					</div>
 					</div>
@@ -211,6 +211,24 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 												<i class="ti ti-external-link text-xs"></i>
 											</a>
 										</td>
+									</tr>
+								</template>
+							</tbody>
+						</table>
+					</div>
+
+					<div x-show="activeSideTab==='links' && (selectedReport.exceptions || []).length>0" class="card mt-6">
+						<h3 class="font-semibold mb-2">Exceptions</h3>
+						<table class="table table-sm">
+							<thead><tr><th>Exception</th><th>Where</th><th>State</th><th>Level</th><th>Expires</th></tr></thead>
+							<tbody>
+								<template x-for="exc in (selectedReport.exceptions || [])" :key="exc.id">
+									<tr>
+										<td><a :href="exc.url" class="underline hover:opacity-75" x-text="exc.title"></a></td>
+										<td class="text-xs" x-text="exc.project_id ? 'Project' : 'Organisation'"></td>
+										<td><span :class="{'bg-base-300': exc.state==='draft' || exc.state==='closed', 'bg-warning': exc.state==='submitted', 'bg-success': exc.state==='active', 'bg-error': exc.state==='expired' || exc.state==='rejected'}" class="pill whitespace-nowrap" x-text="exc.state==='submitted' ? 'awaiting approval' : exc.state"></span></td>
+										<td><span :class="{'bg-primary': exc.risk==='unknown', 'bg-success': exc.risk==='very low', 'bg-warning': exc.risk==='low', 'bg-error opacity-80': exc.risk==='high', 'bg-error': exc.risk==='very high'}" class="pill" x-text="exc.risk"></span></td>
+										<td class="text-xs" :class="{'text-error font-semibold': exc.state==='expired'}" x-text="exc.expiry_date || '-'"></td>
 									</tr>
 								</template>
 							</tbody>
@@ -582,7 +600,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
                         <i x-show="report.review_overdue" class="ti ti-alert-triangle text-error text-xs" title="Review overdue"></i>
                     </td>
                     <td>
-                    	<template x-if="!report.links || report.links.length===0">
+                    	<template x-if="(!report.links || report.links.length===0) && (!report.exceptions || report.exceptions.length===0)">
                     		<span class="text-xs opacity-50">-</span>
                     	</template>
                     	<template x-if="report.links && report.links.length===1">
@@ -591,6 +609,12 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
                     	<template x-if="report.links && report.links.length>1">
                     		<button @click="openDrawer(report); changeTabInDrawer('links')" title="Show where this risk is linked" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
                     	</template>
+                    	<template x-if="report.exceptions && report.exceptions.length===1">
+										<a :href="report.exceptions[0].url" :title="'Exception: ' + report.exceptions[0].title + ' (' + report.exceptions[0].state + ')'" :class="{'badge-error': report.exceptions[0].state==='expired', 'badge-warning': report.exceptions[0].state==='submitted'}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i>1</a>
+									</template>
+									<template x-if="report.exceptions && report.exceptions.length>1">
+										<button @click="openDrawer(report); changeTabInDrawer('links')" :title="'Exceptions: ' + report.exceptions.map(e => e.title + ' (' + e.state + ')').join(', ')" :class="{'badge-error': report.exceptions.some(e => e.state==='expired'), 'badge-warning': !report.exceptions.some(e => e.state==='expired') && report.exceptions.some(e => e.state==='submitted')}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i><span x-text="report.exceptions.length"></span></button>
+									</template>
                     </td>
                     <td>
                         <button @click="openDrawer(report)" class="btn btn-xs btn-ghost border border-base-300"><i class="ti ti-arrow-right text-md"></i></button>
