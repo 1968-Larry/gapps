@@ -154,7 +154,7 @@
 					<template x-for="exc in filteredExceptions" :key="exc.id">
 					  <tr :class="{'opacity-60': exc.state==='closed' || exc.state==='rejected'}">
 						<td class="whitespace-nowrap">
-							<span :class="excStateClass(exc.state)" class="p-1 px-2 rounded-lg uppercase text-ss text-primary-content" x-text="excStateLabels[exc.state]"></span>
+							<span :class="excStateClass(exc.state)" class="p-1 px-2 rounded-lg uppercase text-ss" x-text="excStateLabels[exc.state]"></span>
 						</td>
 						<td @click="openExceptionDrawer(exc)" class="text-left hover:cursor-pointer hover:opacity-75">
 							<div class="min-w-48"></div>

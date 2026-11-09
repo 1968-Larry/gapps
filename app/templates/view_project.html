@@ -2864,10 +2864,10 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 										<button @click="openReportDrawer(report); changeTabInDrawer('links')" title="Show where this risk is linked" class="badge badge-outline gap-1 hover:opacity-75"><i class="ti ti-link text-xs"></i><span x-text="report.links.length"></span></button>
 									</template>
 									<template x-if="report.exceptions && report.exceptions.length===1">
-										<a :href="report.exceptions[0].url" :title="'Exception: ' + report.exceptions[0].title + ' (' + report.exceptions[0].state + ')'" :class="{'badge-error': report.exceptions[0].state==='expired', 'badge-warning': report.exceptions[0].state==='submitted'}" class="badge badge-outline gap-1 hover:opacity-75 ml-1"><i class="ti ti-shield-half text-xs"></i>1 exc.</a>
+										<a :href="report.exceptions[0].url" :title="'Exception: ' + report.exceptions[0].title + ' (' + report.exceptions[0].state + ')'" :class="{'badge-error': report.exceptions[0].state==='expired', 'badge-warning': report.exceptions[0].state==='submitted'}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i>1</a>
 									</template>
 									<template x-if="report.exceptions && report.exceptions.length>1">
-										<button @click="openReportDrawer(report); changeTabInDrawer('links')" :title="'Exceptions: ' + report.exceptions.map(e => e.title + ' (' + e.state + ')').join(', ')" :class="{'badge-error': report.exceptions.some(e => e.state==='expired'), 'badge-warning': !report.exceptions.some(e => e.state==='expired') && report.exceptions.some(e => e.state==='submitted')}" class="badge badge-outline gap-1 hover:opacity-75 ml-1"><i class="ti ti-shield-half text-xs"></i><span x-text="report.exceptions.length + ' exc.'"></span></button>
+										<button @click="openReportDrawer(report); changeTabInDrawer('links')" :title="'Exceptions: ' + report.exceptions.map(e => e.title + ' (' + e.state + ')').join(', ')" :class="{'badge-error': report.exceptions.some(e => e.state==='expired'), 'badge-warning': !report.exceptions.some(e => e.state==='expired') && report.exceptions.some(e => e.state==='submitted')}" class="badge badge-outline gap-1 hover:opacity-75 whitespace-nowrap mt-1"><i class="ti ti-shield-half text-xs"></i><span x-text="report.exceptions.length"></span></button>
 									</template>
 								</td>
 								<td>

@@ -21,6 +21,7 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - On-prem ADFS sign-in (OIDC) next to Google and Microsoft Entra ID (`ADFS_SERVER`)
 - JSON audit log in daily files with retention, bulk collapsing and whitelisted values only
 - Important audit events, including logins and logouts, are shown on the Logs page
+- Idle and absolute session timeouts with a "stay logged in" warning
 
 **Risk management**
 - 4x4 assessment: likelihood x impact calculates the risk level (very low, low, high, very high)
@@ -37,25 +38,23 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Exceptions tab in every project for approved, time limited deviations from controls, hardening,
   patching or policies: description, justification, compensating controls, affected assets
 - Same 4x4 assessment as risks, owner, ticket number, valid from / expiry date (at most
-  `EXCEPTION_MAX_VALIDITY_MONTHS`)
-- Approval flow: draft -> submitted -> approved / rejected -> closed. The level decides who approves
-  (`EXCEPTION_APPROVERS`, default: CISO for high and very high, security manager for low and very
-  low); a higher role may approve lower levels, never the person who requested it, and admins only
-  when nobody else holds the required role. A material change to an approved exception (assessment,
-  dates, justification ...) sends it back for approval, to the role its new level needs - after a
-  confirmation that shows what changes and who must approve (the API refuses it with 409 unless
-  `confirm_resubmit` is sent). Active /
-  expired is derived from the expiry date
-- Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks
-  (shown both ways)
-- Organisation level exceptions (no project), like organisation level risks: created by risk
-  managers / admins, can be attached to sub-controls in every project and then also show up in
-  those projects
-- Collection page (menu: Risk > Exceptions, `/tenants/<id>/exceptions`) with every exception you
-  may see, filter per state, level and project
-- Change history, comments, audit log events (`exception_approved`, `exception_rejected`, ...)
-- Counted per level on the project summary: active, awaiting approval, expiring soon, expired.
-  Exceptions do not change the implementation % of the controls
+  `EXCEPTION_MAX_VALIDITY_MONTHS`). Active / expired follows from the expiry date
+- Approval flow: draft -> submitted -> approved / rejected -> closed. The level decides who
+  approves (`EXCEPTION_APPROVERS`, default: CISO for high and very high, security manager for low
+  and very low). A higher role may approve lower levels; never the person who requested it; admins
+  only when nobody else holds the required role
+- Changing an approved exception (assessment, dates, justification ...) asks for confirmation,
+  shows what changes and who must approve, and sends it back for approval to the role its new level
+  needs. The API refuses such a change (409) unless `confirm_resubmit` is sent
+- Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks; shown
+  both ways, including a badge in the risk tables (red when an exception has expired)
+- Organisation level exceptions (no project), like organisation level risks: can be attached to
+  sub-controls in every project and then show up in those projects
+- Collection page (menu: Risk > Exceptions) with every exception you may see, filter per state,
+  level and project
+- Change history, comments and audit log events (`exception_approved`, `exception_rejected`, ...)
+- Project summary: risks and exceptions counted per level (open / active, awaiting approval,
+  expiring soon, expired, overdue reviews). Exceptions do not change the implementation %
 - Expiry reminders by the same daily `tools/send_risk_reminders.py` run
 
 **Roles**
@@ -113,6 +112,49 @@ Project Overview          |
 Track Progress of Controls          |
 :-------------------------:|
 ![](img/gapps_3.PNG)  |
+
+#### Captures of the features added in this fork
+Screenshots with the demo data from `tools/seed_demo.py`.
+
+Project summary with risks and exceptions          |
+:-------------------------:|
+![](img/gapps_project_summary_risks_exceptions.png)  |
+
+Exceptions of a project          |
+:-------------------------:|
+![](img/gapps_exceptions_project.png)  |
+
+All exceptions of the organisation          |
+:-------------------------:|
+![](img/gapps_exceptions_all.png)  |
+
+Exception details          |
+:-------------------------:|
+![](img/gapps_exception_details.png)  |
+
+Level based approval (here by the CISO)          |
+:-------------------------:|
+![](img/gapps_exception_approval.png)  |
+
+Confirmation before an approved exception goes back for approval          |
+:-------------------------:|
+![](img/gapps_exception_resubmit.png)  |
+
+Exceptions on a sub-control          |
+:-------------------------:|
+![](img/gapps_subcontrol_exceptions.png)  |
+
+Exceptions linked to a risk          |
+:-------------------------:|
+![](img/gapps_risk_linked_exceptions.png)  |
+
+Statement of Applicability (PDF)          |
+:-------------------------:|
+![](img/gapps_report_soa.png)  |
+
+Exception register (PDF)          |
+:-------------------------:|
+![](img/gapps_report_exceptions.png)  |
 
 ### Getting Started
 

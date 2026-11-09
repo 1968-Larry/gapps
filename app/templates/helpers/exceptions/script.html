@@ -153,10 +153,12 @@ function exceptionsMixin() {
 		},
 		excStateClass(state) {
 			return {
+				// text colour set here too: a fixed light text is invisible on the
+				// grey of draft / closed in the light theme
 				"bg-base-300 text-base-content": state === "draft" || state === "closed",
-				"bg-warning": state === "submitted",
-				"bg-success": state === "active",
-				"bg-error": state === "expired" || state === "rejected",
+				"bg-warning text-white": state === "submitted",
+				"bg-success text-white": state === "active",
+				"bg-error text-white": state === "expired" || state === "rejected",
 			}
 		},
 		excLevelClass(level) {
