@@ -1,0 +1,45 @@
+{# Risk strip on the project summary tab - same layout as the exceptions strip #}
+<div x-data="{
+		get open() { return (risks || []).filter(r => !['mitigated', 'accepted'].includes(r.status)) },
+		count(level) { return this.open.filter(r => r.risk === level).length },
+	}"
+	class="border bg-base-200 border-base-200 rounded-lg"
+	:class="excSummary && excSummary.total > 0 ? 'col-span-4' : 'col-span-8'"
+	x-show="risks && risks.length > 0">
+	<div class="p-6">
+		<div class="flex justify-between">
+			<div class="flex items-center gap-x-2 tooltip" data-tip="Risks that are not mitigated or accepted, counted per level">
+				<p class="text-sm font-semibold">Risks</p>
+				<i class="ti ti-alert-circle"></i>
+			</div>
+			<button @click="switchTab({'tab':'risk register'})" class="btn btn-sm btn-ghost"><i class="ti ti-external-link my-auto"></i></button>
+		</div>
+		<div class="grid grid-cols-4 gap-4 mt-2">
+			<div class="hover:cursor-pointer" @click="filter.status = null; filter.risk = null; switchTab({'tab':'risk register'})">
+				<div class="text-xs opacity-70">Open</div>
+				<div class="text-2xl font-semibold" x-text="open.length"></div>
+				<div class="flex flex-wrap gap-1 mt-1">
+					<template x-for="level in ['very high', 'high', 'low', 'very low']" :key="level">
+						<span x-show="count(level)" @click.stop="filter.status = null; filter.risk = level; switchTab({'tab':'risk register'})" :class="excLevelClass(level)" class="px-2 rounded-lg text-ss text-white uppercase" x-text="count(level) + ' ' + level"></span>
+					</template>
+				</div>
+			</div>
+			<div class="hover:cursor-pointer" @click="filter.risk = null; filter.status = 'new'; switchTab({'tab':'risk register'})">
+				<div class="text-xs opacity-70">New / in progress</div>
+				<div class="text-2xl font-semibold">
+					<span x-text="open.filter(r => r.status === 'new').length"></span>
+					<span class="text-sm opacity-60">/</span>
+					<span x-text="open.filter(r => r.status === 'in_progress').length"></span>
+				</div>
+			</div>
+			<div class="hover:cursor-pointer" @click="switchTab({'tab':'risk register'})">
+				<div class="text-xs opacity-70">Review overdue</div>
+				<div class="text-2xl font-semibold" :class="{'text-error': open.filter(r => r.review_overdue).length}" x-text="open.filter(r => r.review_overdue).length"></div>
+			</div>
+			<div class="hover:cursor-pointer" @click="switchTab({'tab':'risk register'})">
+				<div class="text-xs opacity-70">Past due date</div>
+				<div class="text-2xl font-semibold" :class="{'text-error': open.filter(r => r.due_overdue).length}" x-text="open.filter(r => r.due_overdue).length"></div>
+			</div>
+		</div>
+	</div>
+</div>

@@ -1,5 +1,5 @@
 {# Exceptions strip on the project summary tab #}
-<div class="col-span-8 border bg-base-200 border-base-200 rounded-lg" x-show="excSummary && excSummary.total > 0">
+<div class="border bg-base-200 border-base-200 rounded-lg" :class="risks && risks.length > 0 ? 'col-span-4' : 'col-span-8'" x-show="excSummary && excSummary.total > 0">
 	<div class="p-6">
 		<div class="flex justify-between">
 			<div class="flex items-center gap-x-2 tooltip" data-tip="Approved deviations from controls, counted per level">
