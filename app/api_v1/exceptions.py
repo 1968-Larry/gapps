@@ -123,13 +123,15 @@ def _visible_tenant_exceptions(tenant, scope=None):
         query = query.filter(models.PolicyException.project_id.is_(None))
     elif scope == "project":
         query = query.filter(models.PolicyException.project_id.isnot(None))
+    # security managers approve in every project, so they see every exception
+    sees_all_projects = current_user.has_role_for_tenant(tenant, "riskmanager")
     allowed_projects = {}
     result = []
     for exc in query.order_by(models.PolicyException.date_added).all():
         if exc.project_id:
             if exc.project_id not in allowed_projects:
-                allowed_projects[exc.project_id] = authorizer._can_user_access_project(
-                    exc.project
+                allowed_projects[exc.project_id] = (
+                    sees_all_projects or authorizer._can_user_access_project(exc.project)
                 )
             if allowed_projects[exc.project_id]:
                 result.append(exc)

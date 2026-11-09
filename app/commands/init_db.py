@@ -88,7 +88,7 @@ def create_default_users():
 def create_default_roles():
     """Create roles"""
     for role in Role.VALID_ROLE_NAMES:
-        r = Role(name=role.lower(), label=role)
+        r = Role(name=role.lower(), label=Role.ROLE_LABELS.get(role, role))
         db.session.add(r)
         db.session.commit()
     return True

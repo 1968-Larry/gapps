@@ -24,6 +24,7 @@ from app.models import (
     ExceptionComment,
     ExceptionHistory,
     ExceptionReminder,
+    Role,
 )
 
 # (table, column, SQL type)
@@ -75,6 +76,18 @@ with app.app_context():
             if model.__tablename__ not in tables:
                 model.__table__.create(bind=db.engine, checkfirst=True)
                 print(f"[INFO] Schema updates: created table {model.__tablename__}")
+
+        # roles added after the first release (ciso) and their display labels
+        for name in Role.VALID_ROLE_NAMES:
+            label = Role.ROLE_LABELS.get(name, name)
+            role = Role.find_by_name(name)
+            if not role:
+                db.session.add(Role(name=name, label=label))
+                print(f"[INFO] Schema updates: added role {name}")
+            elif role.label in (None, "", name) and label != name:
+                role.label = label  # only the untouched default label
+                print(f"[INFO] Schema updates: role {name} is shown as '{label}'")
+        db.session.commit()
 
         for table, column, coltype in NEW_COLUMNS:
             existing = [c["name"] for c in inspector.get_columns(table)]

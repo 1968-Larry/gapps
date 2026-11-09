@@ -55,7 +55,7 @@ USERS = [
     ("Sara", "Nilsson", []),
     ("Oskar", "Andersson", []),
     ("Linda", "Berg", []),
-    ("Peter", "Holm", []),
+    ("Peter", "Holm", ["ciso"]),
 ]
 
 # (name, description, maturity 0..1) - maturity decides how much is implemented
@@ -433,7 +433,11 @@ def add_org_exceptions(rng, tenant, users, today):
                 rng.choice(subs).associate_with_exception(exc.id)
         exc.submit(requester.id)
         if state == "active":
-            exc.approve(approver.id, "Accepted for the organisation until the replacement project.")
+            deciders = [u.id for u in exc.eligible_approvers()]
+            exc.approve(
+                approver.id if approver.id in deciders else deciders[0],
+                "Accepted for the organisation until the replacement project.",
+            )
     return created
 
 
@@ -489,6 +493,9 @@ def add_demo_exceptions(rng, project, today):
         exc.submit(requester)
         if state == "submitted":
             continue
+        # who may decide depends on the level (EXCEPTION_APPROVERS)
+        deciders = [u.id for u in exc.eligible_approvers()]
+        approver = approver if approver in deciders else (deciders[0] if deciders else approver)
         if state == "rejected":
             exc.reject(approver, "Describe the compensating controls in more detail.")
             continue

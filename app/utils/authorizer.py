@@ -85,13 +85,17 @@ class Authorizer:
             return True
         return False
 
+    def _is_ciso(self, tenant):
+        """CISO: reads every project of the tenant and works in the risk module."""
+        return bool(tenant) and self.user.has_role_for_tenant(tenant, "ciso")
+
     def _can_user_access_risk_module(self, tenant):
         if (
             self.user.super
             or self.user.id == tenant.owner_id
             or self.user.has_any_role_for_tenant(
                 tenant,
-                ["admin", "viewer", "vendor", "riskmanager", "riskviewer"],
+                ["admin", "viewer", "vendor", "riskmanager", "riskviewer", "ciso"],
             )
         ):
             return True
@@ -102,7 +106,7 @@ class Authorizer:
             self.user.super
             or self.user.id == tenant.owner_id
             or self.user.has_any_role_for_tenant(
-                tenant, ["admin", "viewer", "riskmanager"]
+                tenant, ["admin", "viewer", "riskmanager", "ciso"]
             )
         ):
             return True
@@ -255,7 +259,7 @@ class Authorizer:
             self.user, ["manager", "contributor", "viewer", "auditor"]
         ):
             return True
-        return False
+        return self._is_ciso(project.tenant)
 
     def _can_user_audit_project(self, project):
         if project.has_member_with_access(self.user, ["auditor"]):
@@ -265,7 +269,8 @@ class Authorizer:
     def _can_user_access_project(self, project):
         if self._can_user_admin_tenant(project.tenant) or project.has_member(self.user):
             return True
-        return False
+        # CISO sees every project (read; changes still need a project role)
+        return self._is_ciso(project.tenant)
 
     def can_user_manage_project(self, project):
         if not (project := self._does_project_exist(project)):
@@ -602,23 +607,18 @@ class Authorizer:
         return self.return_response(False, UNAUTHORIZED_MSG, 403)
 
     # exceptions (deviations). Project exceptions follow the project roles:
-    #   read    - any project member (and tenant admins)
+    #   read    - any project member, tenant admins, the CISO and security managers
     #   edit    - project manager / contributor (create, change, submit, link, comment)
     #   manage  - project manager (delete, close, reopen)
-    #   approve - tenant admin / owner, risk manager or project manager; never the
-    #             person who requested it (checked in PolicyException.approve)
+    #   approve - by level (EXCEPTION_APPROVERS): CISO > security manager
+    #             (riskmanager) > project manager; admins only when nobody else
+    #             holds the role; never the requester
     def _exception_project(self, exception):
         return exception.project if exception.project_id else None
 
     def _can_user_approve_exception(self, exception):
-        tenant = exception.tenant
-        if (
-            self._can_user_admin_tenant(tenant)
-            or self.user.has_any_role_for_tenant(tenant, ["riskmanager"])
-        ):
-            return True
-        project = self._exception_project(exception)
-        return bool(project and project.has_member_with_access(self.user, ["manager"]))
+        """Level based (EXCEPTION_APPROVERS), see PolicyException.user_can_approve."""
+        return exception.user_can_approve(self.user)
 
     def _can_user_read_exception(self, exception):
         """
@@ -627,15 +627,18 @@ class Authorizer:
         be opened from the sub-control it applies to).
         """
         project = self._exception_project(exception)
-        if project:
-            return self._can_user_access_project(project)
         tenant = exception.tenant
+        if project:
+            # security managers approve exceptions in every project, so they see them
+            return self._can_user_access_project(project) or self.user.has_role_for_tenant(
+                tenant, "riskmanager"
+            )
         # risk module users, except vendors (external parties)
         if (
             self.user.super
             or self.user.id == tenant.owner_id
             or self.user.has_any_role_for_tenant(
-                tenant, ["admin", "viewer", "riskmanager", "riskviewer"]
+                tenant, ["admin", "viewer", "riskmanager", "riskviewer", "ciso"]
             )
         ):
             return True
@@ -688,6 +691,11 @@ class Authorizer:
             return self.return_response(False, "exception not found", 404)
         if self._can_user_approve_exception(exception):
             return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        if self._can_user_read_exception(exception):
+            # tell people who can see it why they can not decide
+            return self.return_response(
+                False, exception.approval_denied_reason(self.user), 403
+            )
         return self.return_response(False, UNAUTHORIZED_MSG, 403)
 
     # user email confirmation

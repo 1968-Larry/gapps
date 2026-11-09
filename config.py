@@ -137,6 +137,14 @@ class Config:
     EXCEPTION_ALLOW_SELF_APPROVAL = (
         os.environ.get("EXCEPTION_ALLOW_SELF_APPROVAL", "false").lower() == "true"
     )
+    # Who approves which level: level=approver, approvers from low to high are
+    # project_manager, riskmanager (shown as Security manager) and ciso. A higher
+    # approver may also approve lower levels. Admins approve only when nobody
+    # (other than the requester) holds the required role.
+    EXCEPTION_APPROVERS = os.environ.get(
+        "EXCEPTION_APPROVERS",
+        "very high=ciso,high=ciso,low=riskmanager,very low=riskmanager",
+    )
     EXCEPTION_REMINDERS_ENABLED = (
         os.environ.get("EXCEPTION_REMINDERS_ENABLED", "true").lower() == "true"
     )

@@ -824,6 +824,22 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
             return []
         return [role.name for role in user.roles.all()]
 
+    def users_with_role(self, role_name):
+        """Users that have the role in this tenant (roles live on TenantMember)."""
+        role = Role.find_by_name(role_name)
+        if not role:
+            return []
+        members = (
+            TenantMember.query.join(
+                TenantMemberRole, TenantMemberRole.tenant_member_id == TenantMember.id
+            )
+            .filter(TenantMember.tenant_id == self.id)
+            .filter(TenantMemberRole.role_id == role.id)
+            .all()
+        )
+        users = User.query.filter(User.id.in_([m.user_id for m in members])).all()
+        return [u for u in users if u.is_active]
+
     def has_member_with_role(self, user_or_email, role_name):
         if not role_name:
             return False
@@ -4208,6 +4224,15 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
     )
     DEFAULT_MAX_VALIDITY_MONTHS = 12
     DEFAULT_EXPIRING_SOON_DAYS = 30
+    # who approves which level (EXCEPTION_APPROVERS). Lowest to highest: a higher
+    # approver may always approve what a lower one may.
+    APPROVER_RANKS = ["project_manager", "riskmanager", "ciso"]
+    APPROVER_LABELS = {
+        "project_manager": "Project manager",
+        "riskmanager": "Security manager",
+        "ciso": "CISO",
+    }
+    DEFAULT_APPROVERS = "very high=ciso,high=ciso,low=riskmanager,very low=riskmanager"
 
     # -- create ----------------------------------------------------------------
     @staticmethod
@@ -4289,12 +4314,106 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
         return str(value).lower() in ("1", "true", "yes")
 
     @staticmethod
+    def approver_rules():
+        """EXCEPTION_APPROVERS ("very high=ciso,...") -> {level: approver}"""
+        raw = PolicyException._config(
+            "EXCEPTION_APPROVERS", PolicyException.DEFAULT_APPROVERS
+        )
+        rules = {}
+        for item in str(raw).split(","):
+            if "=" not in item:
+                continue
+            level, approver = (x.strip().lower() for x in item.split("=", 1))
+            approver = approver.replace(" ", "_").replace("-", "_")
+            if approver in PolicyException.APPROVER_RANKS:
+                rules[level] = approver
+            else:
+                logging.getLogger(__name__).warning(
+                    "EXCEPTION_APPROVERS: unknown approver %r for %r", approver, level
+                )
+        return rules
+
+    @staticmethod
     def settings():
         return {
             "max_validity_months": PolicyException.max_validity_months(),
             "expiring_soon_days": PolicyException.expiring_soon_days(),
             "self_approval_allowed": PolicyException.self_approval_allowed(),
+            "approvers": PolicyException.approver_rules(),
+            "approver_labels": PolicyException.APPROVER_LABELS,
         }
+
+    # -- who approves --------------------------------------------------------------
+    def required_approver(self):
+        """The lowest approver that may approve this exception at its level."""
+        approver = self.approver_rules().get((self.risk or "").lower(), "riskmanager")
+        if approver == "project_manager" and not self.project_id:
+            approver = "riskmanager"  # an organisation exception has no project
+        return approver
+
+    def approver_rank(self, user):
+        """Highest approver rank the user holds for this exception (-1 = none)."""
+        tenant = self.tenant
+        if user.has_role_for_tenant(tenant, "ciso"):
+            return 2
+        if user.has_role_for_tenant(tenant, "riskmanager"):
+            return 1
+        if self.project_id and self.project.has_member_with_access(user, ["manager"]):
+            return 0
+        return -1
+
+    def _excluded_approver(self, user_id):
+        return (
+            user_id is not None
+            and user_id == self.requested_by
+            and not self.self_approval_allowed()
+        )
+
+    def eligible_approvers(self):
+        """Users (not the requester) that hold the required approver role or higher."""
+        needed = self.APPROVER_RANKS.index(self.required_approver())
+        user_ids = set()
+        for rank, role in ((1, "riskmanager"), (2, "ciso")):
+            if rank >= needed:
+                for user in self.tenant.users_with_role(role):
+                    user_ids.add(user.id)
+        if needed == 0 and self.project_id:
+            for member in ProjectMember.query.filter(
+                ProjectMember.project_id == self.project_id,
+                ProjectMember.access_level == "manager",
+            ).all():
+                user_ids.add(member.user_id)
+        users = User.query.filter(User.id.in_(list(user_ids))).all() if user_ids else []
+        return [u for u in users if u.is_active and not self._excluded_approver(u.id)]
+
+    def _is_admin(self, user):
+        tenant = self.tenant
+        return (
+            user.super
+            or user.id == tenant.owner_id
+            or user.has_role_for_tenant(tenant, "admin")
+        )
+
+    def admin_fallback(self):
+        """Admins approve when nobody (but the requester) holds the required role."""
+        return not self.eligible_approvers()
+
+    def approval_denied_reason(self, user):
+        """Why the user may not decide (None when allowed)."""
+        if self.user_can_approve(user):
+            return None
+        if self._excluded_approver(user.id):
+            return "You can not approve an exception you requested yourself"
+        label = self.APPROVER_LABELS[self.required_approver()]
+        return f"A {self.risk} exception must be approved by {label} (or higher)"
+
+    def user_can_approve(self, user):
+        if self._excluded_approver(user.id):
+            return False
+        needed = self.APPROVER_RANKS.index(self.required_approver())
+        if self.approver_rank(user) >= needed:
+            return True
+        return self._is_admin(user) and self.admin_fallback()
 
     # -- validation ------------------------------------------------------------
     @validates("valid_from", "expiry_date")
@@ -4408,12 +4527,15 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
     def approve(self, user_id, note=None):
         if self.status != "submitted":
             abort(400, "Only a submitted exception can be approved")
-        if (
-            user_id
-            and user_id == self.requested_by
-            and not self.self_approval_allowed()
-        ):
+        if self._excluded_approver(user_id):
             abort(403, "You can not approve an exception you requested yourself")
+        user = User.query.get(user_id) if user_id else None
+        if user and not self.user_can_approve(user):
+            abort(
+                403,
+                f"A {self.risk} exception must be approved by "
+                f"{self.APPROVER_LABELS[self.required_approver()]} (or higher)",
+            )
         missing = self.missing_for_submit()
         if missing:
             abort(400, "Missing before approval: " + ", ".join(missing))
@@ -4431,6 +4553,9 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
     def reject(self, user_id, note):
         if self.status != "submitted":
             abort(400, "Only a submitted exception can be rejected")
+        user = User.query.get(user_id) if user_id else None
+        if user and not self.user_can_approve(user):
+            abort(403, "You can not decide on this exception")
         if not (note or "").strip():
             abort(400, "Give a reason for the rejection")
         self.decided_by = user_id
@@ -4573,6 +4698,10 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
         data["expiring_soon"] = self.is_expiring_soon(today)
         data["score"] = self.score()
         data["missing_for_submit"] = self.missing_for_submit()
+        data["required_approver"] = self.required_approver()
+        data["required_approver_label"] = self.APPROVER_LABELS[data["required_approver"]]
+        if self.status == "submitted":
+            data["admin_fallback"] = self.admin_fallback()
         data["requested_by_email"] = self._email(self.requested_by)
         data["decided_by_email"] = self._email(self.decided_by)
         data["assignee_email"] = self._email(self.assignee)
@@ -5034,7 +5163,14 @@ class Role(db.Model):
         "riskmanager",
         "riskviewer",
         "vendor",
+        "ciso",
     ]
+    # shown instead of the technical name; the name stays the key everywhere
+    ROLE_LABELS = {
+        "riskmanager": "Security manager",
+        "riskviewer": "Risk viewer",
+        "ciso": "CISO",
+    }
 
 
 class TenantMember(db.Model):

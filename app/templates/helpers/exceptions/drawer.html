@@ -40,8 +40,9 @@
 						<div x-show="selectedException.state==='submitted'" role="alert" class="alert bg-base-100 py-2">
 							<i class="ti ti-hourglass text-warning"></i>
 							<span x-show="excCanDecide(selectedException)">Waiting for a decision. You can approve or reject it on the Approval tab.</span>
-							<span x-show="!excCanDecide(selectedException) && selectedException.is_requester && !excSettings.self_approval_allowed">Waiting for approval. You requested it, so someone else (project manager, risk manager or admin) must approve it.</span>
-							<span x-show="!excCanDecide(selectedException) && !(selectedException.is_requester && !excSettings.self_approval_allowed)">Waiting for approval by a project manager, risk manager or admin.</span>
+							<span x-show="!excCanDecide(selectedException)">
+								Waiting for approval by <span class="font-semibold" x-text="excApproverText(selectedException)"></span><span x-show="selectedException.is_requester && !excSettings.self_approval_allowed"> - you requested it, so someone else must approve it</span>.
+							</span>
 						</div>
 						<div x-show="selectedException.state==='rejected'" role="alert" class="alert bg-base-100 py-2">
 							<i class="ti ti-ban text-error"></i>
@@ -171,6 +172,10 @@
 						<div class="col-span-5">
 							<table class="table table-sm">
 								<tbody>
+									<tr><td class="font-semibold">Approval by</td><td>
+										<span x-text="excApproverText(selectedException)"></span>
+										<div class="text-xs opacity-70" x-text="'Level ' + selectedException.risk + ' - set by EXCEPTION_APPROVERS'"></div>
+									</td></tr>
 									<tr><td class="font-semibold">Requested by</td><td x-text="selectedException.requested_by_email || '-'"></td></tr>
 									<tr><td class="font-semibold">Submitted</td><td x-text="selectedException.submitted_date || '-'"></td></tr>
 									<tr><td class="font-semibold">Decided by</td><td x-text="selectedException.decided_by_email || '-'"></td></tr>
@@ -197,8 +202,9 @@
 								<button x-show="selectedException.can_manage" @click="showDeleteExceptionModal=true" class="btn btn-sm btn-ghost text-error ml-auto"><i class="ti ti-trash"></i>Delete</button>
 							</div>
 							<p class="text-xs opacity-70 mt-4">
-								Approval: <span x-text="selectedException.project_id ? 'project manager, risk manager or admin' : 'risk manager or admin (organisation level)'"></span>, never the person who requested it.
-								An approved exception that is changed (assessment, dates, justification) has to be approved again.
+								The level decides who approves: by default CISO for high and very high, security manager for low and very low.
+								A higher role may approve lower levels. Never the person who requested it.
+								An approved exception that is changed (assessment, dates, justification) has to be approved again, by the role its new level needs.
 							</p>
 						</div>
 					</div>

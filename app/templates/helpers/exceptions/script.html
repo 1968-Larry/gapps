@@ -173,6 +173,12 @@ function exceptionsMixin() {
 			return exc.state === "submitted" && exc.can_approve &&
 				(!exc.is_requester || this.excSettings.self_approval_allowed)
 		},
+		excApproverText(exc) {
+			const label = exc.required_approver_label || "Security manager"
+			let text = label === "CISO" ? "the CISO" : (label + " or higher")
+			if (exc.admin_fallback) text += " (nobody has that role - an admin decides instead)"
+			return text
+		},
 		excReadOnly(exc) {
 			return !exc.can_edit || exc.status === "closed"
 		},

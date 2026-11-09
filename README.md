@@ -38,10 +38,12 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   patching or policies: description, justification, compensating controls, affected assets
 - Same 4x4 assessment as risks, owner, ticket number, valid from / expiry date (at most
   `EXCEPTION_MAX_VALIDITY_MONTHS`)
-- Approval flow: draft -> submitted -> approved / rejected -> closed. Approved by a project manager,
-  risk manager or admin, never by the person who requested it. A material change to an approved
-  exception (assessment, dates, justification ...) sends it back for approval. Active / expired is
-  derived from the expiry date
+- Approval flow: draft -> submitted -> approved / rejected -> closed. The level decides who approves
+  (`EXCEPTION_APPROVERS`, default: CISO for high and very high, security manager for low and very
+  low); a higher role may approve lower levels, never the person who requested it, and admins only
+  when nobody else holds the required role. A material change to an approved exception (assessment,
+  dates, justification ...) sends it back for approval, to the role its new level needs. Active /
+  expired is derived from the expiry date
 - Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks
   (shown both ways)
 - Organisation level exceptions (no project), like organisation level risks: created by risk
@@ -53,6 +55,15 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 - Counted per level on the project summary: active, awaiting approval, expiring soon, expired.
   Exceptions do not change the implementation % of the controls
 - Expiry reminders by the same daily `tools/send_risk_reminders.py` run
+
+**Roles**
+- New tenant role `ciso`: reads every project of the organisation without being a member, works in
+  the risk module and approves exceptions of every level. Changes inside a project still need a
+  project role
+- `riskmanager` is shown as "Security manager" (the technical name is unchanged). Security managers
+  see and approve exceptions in every project
+- Fixed: the reminder recipient `risk_managers` (also the default fallback) found nobody, because it
+  read an old, unused role table. New recipient token `ciso`
 
 **Controls and evidence**
 - Custom controls and sub-controls: choose the reference code, rename, and add sub-controls
@@ -235,7 +246,7 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `AUDIT_LOG_ENABLED` / `AUDIT_LOG_PATH` / `AUDIT_LOG_RETENTION_DAYS` | `true` / `/var/log/app/audit.log` / `90` | JSON audit log, one file per day |
 | `AUDIT_GUI_ENABLED` / `AUDIT_GUI_RETENTION_DAYS` / `AUDIT_GUI_EVENTS` | `true` / `90` / built-in list | Events that are also shown on the Logs page |
 | `RISK_REVIEW_INTERVALS` | `very high=3,high=6,low=12,very low=12` | Months to the next review per risk level |
-| `RISK_REMINDER_TO` / `RISK_REMINDER_CC` | `assignee` / empty | Who gets the reminder: `assignee`, `project_managers`, `tenant_owner`, `risk_managers` or fixed email addresses (comma list) |
+| `RISK_REMINDER_TO` / `RISK_REMINDER_CC` | `assignee` / empty | Who gets the reminder: `assignee`, `project_managers`, `tenant_owner`, `risk_managers`, `ciso` or fixed email addresses (comma list) |
 | `RISK_REMINDER_FALLBACK_TO` | `risk_managers` | Used when the To list is empty for a risk (for example no assignee) |
 | `RISK_REMINDER_DAYS_BEFORE` | `7` | First reminder this many days before the review/due date |
 | `RISK_REMINDER_OVERDUE_REPEAT_DAYS` | `7` | Repeat every N days once overdue, `0` = never |
@@ -243,6 +254,7 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `APP_BASE_URL` | empty | Public address of the app, used for the links in the reminder mails |
 | `EXCEPTION_MAX_VALIDITY_MONTHS` | `12` | Longest validity of an exception from approval, `0` = no limit |
 | `EXCEPTION_EXPIRING_SOON_DAYS` | `30` | "Expiring soon" is shown this many days before the expiry date |
+| `EXCEPTION_APPROVERS` | `very high=ciso,high=ciso,low=riskmanager,very low=riskmanager` | Who approves each level: `project_manager`, `riskmanager` (Security manager) or `ciso`, from low to high. A higher role may approve lower levels; admins only when nobody else holds the role |
 | `EXCEPTION_ALLOW_SELF_APPROVAL` | `false` | Let the requester approve their own exception (only for one-person setups) |
 | `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
 

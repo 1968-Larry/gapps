@@ -31,7 +31,7 @@ from urllib.parse import quote
 
 log = logging.getLogger(__name__)
 
-TOKENS = ("assignee", "project_managers", "tenant_owner", "risk_managers")
+TOKENS = ("assignee", "project_managers", "tenant_owner", "risk_managers", "ciso")
 KIND_LABELS = {"review": "Review due", "due": "Due date", "expiry": "Exception expires"}
 
 
@@ -175,10 +175,10 @@ def _emails_for_token(token, risk, models):
     elif token == "tenant_owner":
         users = [models.User.query.get(risk.tenant.owner_id)]
     elif token == "risk_managers":
-        for mapping in models.UserRole.get_mappings_for_role_in_tenant(
-            "riskmanager", risk.tenant_id
-        ):
-            users.append(models.User.query.get(mapping.user_id))
+        # roles live on the tenant membership (the old UserRole table is empty)
+        users = list(risk.tenant.users_with_role("riskmanager"))
+    elif token == "ciso":
+        users = list(risk.tenant.users_with_role("ciso"))
     return [u.email for u in users if u and u.email and u.is_active]
 
 
