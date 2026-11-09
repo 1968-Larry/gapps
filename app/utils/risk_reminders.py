@@ -154,7 +154,7 @@ def _risk_path(risk):
 def _exception_path(exc):
     if exc.project_id:
         return "/projects/%s?tab=exceptions&exception-id=%s" % (exc.project_id, exc.id)
-    return None
+    return "/tenants/%s/exceptions?exception-id=%s" % (exc.tenant_id, exc.id)
 
 
 def _emails_for_token(token, risk, models):
@@ -307,7 +307,7 @@ def run(app, dry_run=False, today=None, out=print):
             group = groups.setdefault(
                 key, {"to": to, "cc": cc, "items": [], "reminders": [], "tenant": exc.tenant_id}
             )
-            where = None
+            where = "Organisation"
             if exc.project_id:
                 project = models.Project.query.get(exc.project_id)
                 where = "Project: %s" % project.name if project else None

@@ -9,6 +9,16 @@
 			Will be linked to <span class="font-semibold" x-text="selectedSubControl ? (selectedSubControl.ref_code + ' ' + selectedSubControl.name) : ''"></span>.
 		</p>
 		<div class="grid grid-cols-12 gap-4 card-body">
+			<div class="col-span-12" x-show="excScope === 'tenant'">
+				<label class="block text-sm font-medium mb-2">Belongs to</label>
+				<select x-model="excPayload.project_id" class="select select-sm select-bordered w-full">
+					<option value="">Organisation (no project) - applies across projects</option>
+					<template x-for="p in excProjects.filter(p => p.can_edit)" :key="p.id">
+						<option :value="p.id" x-text="'Project: ' + p.name" :selected="excPayload.project_id === p.id"></option>
+					</template>
+				</select>
+				<p class="text-xs opacity-70 mt-1">An organisation level exception can be attached to sub-controls in every project.</p>
+			</div>
 			<div class="col-span-12">
 				<label class="block text-sm font-medium mb-2">Title</label>
 				<input x-model="excPayload.title" type="text" placeholder="e.g. SMBv1 enabled on the legacy document scanners" class="input input-sm input-bordered w-full" />
@@ -97,12 +107,15 @@
 		<h2 class="text-xl font-semibold px-6 my-4">Attach Exception</h2>
 		<p class="text-sm px-6 mb-4">Select the exceptions that apply to this subcontrol.</p>
 		<div class="px-6 max-h-96 overflow-y-auto">
-			<div x-show="!exceptions.filter(e => e.status !== 'closed').length" class="text-sm opacity-70">There are no open exceptions in this project yet.</div>
-			<template x-for="exc in exceptions.filter(e => e.status !== 'closed' || excAttachSelected.includes(e.id))" :key="exc.id">
+			<div x-show="!excAttachCandidates().length" class="text-sm opacity-70">There are no open exceptions in this project or the organisation yet.</div>
+			<template x-for="exc in excAttachCandidates()" :key="exc.id">
 				<label class="flex items-center gap-3 py-2 border-b border-base-300 hover:cursor-pointer">
 					<input type="checkbox" class="checkbox checkbox-sm" :checked="excAttachSelected.includes(exc.id)" @change="toggleAttachException(exc.id, $event.target.checked)" />
 					<span :class="excStateClass(exc.state)" class="px-2 rounded-lg uppercase text-ss text-primary-content whitespace-nowrap" x-text="excStateLabels[exc.state]"></span>
-					<span class="text-sm flex-1" x-text="exc.title"></span>
+					<span class="text-sm flex-1">
+						<span x-text="exc.title"></span>
+						<span x-show="!exc.project_id" class="badge badge-outline badge-sm ml-1">Organisation</span>
+					</span>
 					<span :class="excLevelClass(exc.risk)" class="px-2 rounded-lg uppercase text-ss text-white" x-text="exc.risk"></span>
 				</label>
 			</template>

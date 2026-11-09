@@ -1095,6 +1095,10 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
             form.create_section(title="general")
         return form
 
+    def create_exception(self, data, requested_by=None):
+        """Organisation level exception (not tied to a project)."""
+        return PolicyException.build(self, data, requested_by)
+
     def create_risk(
         self,
         title,
@@ -2698,31 +2702,36 @@ class Project(db.Model, DateMixin):
 
     def create_exception(self, data, requested_by=None):
         """New exception (status draft) in this project, from a dict of fields."""
-        if not (data.get("title") or "").strip():
-            abort(400, "The exception needs a title")
-        exc = PolicyException(
-            title=data["title"].strip(),
-            requested_by=requested_by,
-            assignee=self.validate_risk_assignee(data.get("assignee")),
-            project_id=self.id,
-            tenant_id=self.tenant_id,
-            status="draft",
+        return PolicyException.build(self.tenant, data, requested_by, project=self)
+
+    def applicable_exceptions(self):
+        """
+        Exceptions that apply to this project: its own, plus organisation level
+        exceptions that are linked to one of its sub-controls.
+        """
+        linked_org = (
+            db.session.query(ExceptionAssociation.exception_id)
+            .join(
+                ProjectSubControl,
+                ProjectSubControl.id == ExceptionAssociation.control_id,
+            )
+            .filter(ProjectSubControl.project_id == self.id)
         )
-        for field in PolicyException.EDITABLE_FIELDS:
-            if field == "title" or field not in data:
-                continue
-            value = data.get(field)
-            if isinstance(value, str) and field not in PolicyException.DATE_FIELDS:
-                value = value.strip()
-            setattr(exc, field, value if value not in ("",) else None)
-        if exc.risk is None:
-            exc.risk = "unknown"
-        db.session.add(exc)
-        db.session.commit()
-        return exc
+        return (
+            PolicyException.query.filter(PolicyException.tenant_id == self.tenant_id)
+            .filter(
+                (PolicyException.project_id == self.id)
+                | (
+                    PolicyException.project_id.is_(None)
+                    & PolicyException.id.in_(linked_org)
+                )
+            )
+            .order_by(PolicyException.date_added)
+            .all()
+        )
 
     def exception_summary(self):
-        return PolicyException.summarize(self.exceptions.all())
+        return PolicyException.summarize(self.applicable_exceptions())
 
     def review_summary(self):
         data = {"total": 0}
@@ -4200,6 +4209,46 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
     DEFAULT_MAX_VALIDITY_MONTHS = 12
     DEFAULT_EXPIRING_SOON_DAYS = 30
 
+    # -- create ----------------------------------------------------------------
+    @staticmethod
+    def validate_assignee(tenant, assignee_id):
+        """A valid owner (a member of the organisation) or None when empty."""
+        if not assignee_id:
+            return None
+        user = User.query.get(assignee_id)
+        if not user or not tenant.has_member(user):
+            abort(400, "The owner must be a user in this organisation")
+        return user.id
+
+    @staticmethod
+    def build(tenant, data, requested_by=None, project=None):
+        """
+        New exception (status draft) from a dict of fields. Without a project it
+        is an organisation level exception, like a risk without a project.
+        """
+        if not (data.get("title") or "").strip():
+            abort(400, "The exception needs a title")
+        exc = PolicyException(
+            title=data["title"].strip(),
+            requested_by=requested_by,
+            assignee=PolicyException.validate_assignee(tenant, data.get("assignee")),
+            project_id=project.id if project else None,
+            tenant_id=tenant.id,
+            status="draft",
+        )
+        for field in PolicyException.EDITABLE_FIELDS:
+            if field == "title" or field not in data:
+                continue
+            value = data.get(field)
+            if isinstance(value, str) and field not in PolicyException.DATE_FIELDS:
+                value = value.strip()
+            setattr(exc, field, value if value not in ("",) else None)
+        if exc.risk is None:
+            exc.risk = "unknown"
+        db.session.add(exc)
+        db.session.commit()
+        return exc
+
     # -- settings ------------------------------------------------------------
     @staticmethod
     def _config(key, default):
@@ -4504,6 +4553,7 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
             "expiry_date": self._plain(self.expiry_date),
             "days_left": self.days_left(today),
             "project_id": self.project_id,
+            "scope": "project" if self.project_id else "tenant",
         }
 
     def as_dict(self, include_comments=True):
@@ -4522,8 +4572,8 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
         data["created_at"] = arrow.get(self.date_added).format("MMM D, YYYY")
         data["date_added"] = self._plain(self.date_added)
         data["date_updated"] = self._plain(self.date_updated)
-        if self.project_id:
-            data["project"] = self.project.name
+        data["scope"] = "project" if self.project_id else "tenant"
+        data["project"] = self.project.name if self.project_id else None
         data["risks"] = self.risk_summaries()
         if include_comments:
             data["comments"] = [c.as_dict() for c in self.comments.all()]

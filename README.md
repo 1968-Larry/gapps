@@ -44,6 +44,11 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   derived from the expiry date
 - Linked to sub-controls (Exceptions tab in the control drawer) and, optionally, to risks
   (shown both ways)
+- Organisation level exceptions (no project), like organisation level risks: created by risk
+  managers / admins, can be attached to sub-controls in every project and then also show up in
+  those projects
+- Collection page (menu: Risk > Exceptions, `/tenants/<id>/exceptions`) with every exception you
+  may see, filter per state, level and project
 - Change history, comments, audit log events (`exception_approved`, `exception_rejected`, ...)
 - Counted per level on the project summary: active, awaiting approval, expiring soon, expired.
   Exceptions do not change the implementation % of the controls

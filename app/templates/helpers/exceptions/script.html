@@ -4,15 +4,23 @@
  * {...exceptionsMixin(), ...}, so `this` is the project component and the
  * helpers there (request, toast, projectUsers, risks, selectedSubControl,
  * refreshControlFromServer, openRiskFromSubControl, ...) can be used.
+ * The collection page (exceptions.html) uses the same mixin with
+ * excScope = "tenant" and provides those helpers itself.
  * No getters here: the spread would evaluate them once.
  */
 function exceptionsMixin() {
 	return {
+		// "project": the Exceptions tab of one project (this.projectId)
+		// "tenant": all exceptions of the organisation (this.excTenantId)
+		excScope: "project",
+		excTenantId: null,
+		excProjects: [],
+		excOrgExceptions: [],
 		exceptions: [],
 		filteredExceptions: [],
 		excLoading: true,
 		excSummary: null,
-		excFilter: {state: null, risk: null},
+		excFilter: {state: null, risk: null, project: null},
 		excSearch: "",
 		excSettings: {max_validity_months: 12, expiring_soon_days: 30, self_approval_allowed: false},
 		selectedException: {},
@@ -56,7 +64,7 @@ function exceptionsMixin() {
 		},
 		getExceptions(openId = null) {
 			this.excLoading = true
-			request("GET", `/api/v1/projects/${this.projectId}/exceptions`,
+			request("GET", this.excListUrl(),
 				data => {
 					this.exceptions = data
 					this.filterExceptions()
@@ -81,10 +89,28 @@ function exceptionsMixin() {
 			);
 		},
 		getExceptionSummary() {
-			request("GET", `/api/v1/projects/${this.projectId}/exceptions/summary`,
+			request("GET", this.excListUrl() + "/summary",
 				data => { this.excSummary = data },
 				error => { console.log("Unable to load exception summary") }
 			);
+		},
+		excListUrl() {
+			if (this.excScope === "tenant") return `/api/v1/tenants/${this.excTenantId}/exceptions`
+			return `/api/v1/projects/${this.projectId}/exceptions`
+		},
+		excProjectKey(exc) {
+			return exc.project_id || "__org__"
+		},
+		excProjectOptions() {
+			// [key, label, count] for the project filter, organisation level first
+			const seen = {}
+			for (const exc of this.exceptions) {
+				const key = this.excProjectKey(exc)
+				if (!seen[key]) seen[key] = {key: key, label: exc.project || "Organisation (no project)", count: 0}
+				if (!["closed", "rejected"].includes(exc.state)) seen[key].count++
+			}
+			return Object.values(seen).sort((a, b) =>
+				(a.key === "__org__" ? -1 : b.key === "__org__" ? 1 : a.label.localeCompare(b.label)))
 		},
 		excMatchesState(exc, state) {
 			if (state === "expiring") return exc.state === "active" && exc.expiring_soon
@@ -95,8 +121,9 @@ function exceptionsMixin() {
 			this.filteredExceptions = this.exceptions.filter(exc => {
 				if (this.excFilter.state && !this.excMatchesState(exc, this.excFilter.state)) return false
 				if (this.excFilter.risk && exc.risk !== this.excFilter.risk) return false
+				if (this.excFilter.project && this.excProjectKey(exc) !== this.excFilter.project) return false
 				if (q) {
-					const text = [exc.title, exc.affected_assets, exc.ticket_number,
+					const text = [exc.title, exc.affected_assets, exc.ticket_number, exc.project,
 						...(exc.links || []).map(l => l.ref_code + " " + l.name)].join(" ").toLowerCase()
 					if (!text.includes(q)) return false
 				}
@@ -104,10 +131,10 @@ function exceptionsMixin() {
 			})
 		},
 		excHasFilter() {
-			return !!(this.excFilter.state || this.excFilter.risk || this.excSearch)
+			return !!(this.excFilter.state || this.excFilter.risk || this.excFilter.project || this.excSearch)
 		},
 		excClearFilter() {
-			this.excFilter = {state: null, risk: null}
+			this.excFilter = {state: null, risk: null, project: null}
 			this.excSearch = ""
 		},
 		excCount(state) {
@@ -178,7 +205,9 @@ function exceptionsMixin() {
 				title: "", description: "", justification: "", compensating_controls: "",
 				affected_assets: "", likelihood: "", impact: "", risk: "unknown",
 				assignee: "", expiry_date: this.excAddMonths(Math.min(6, this.excSettings.max_validity_months || 6)),
-				valid_from: "", ticket_number: ""
+				valid_from: "", ticket_number: "",
+				// collection page: empty = organisation level
+				project_id: (this.excScope === "tenant" && this.excFilter.project && this.excFilter.project !== "__org__") ? this.excFilter.project : ""
 			}
 			this.creatingExcForSubControl = forSubControl
 			this.showCreateException = true
@@ -190,8 +219,12 @@ function exceptionsMixin() {
 			if (this.creatingExcForSubControl && this.selectedSubControl) {
 				payload.subcontrols = [this.selectedSubControl.id]
 			}
+			const url = this.excScope === "tenant"
+				? `/api/v1/tenants/${this.excTenantId}/exceptions`
+				: `/api/v1/projects/${this.projectId}/exceptions`
+			if (this.excScope !== "tenant") delete payload.project_id
 			this.excBusy = true
-			request("POST", `/api/v1/projects/${this.projectId}/exceptions`,
+			request("POST", url,
 				data => {
 					this.excBusy = false
 					this.showCreateException = false
@@ -244,9 +277,12 @@ function exceptionsMixin() {
 		},
 		copyExceptionLink(id) {
 			const url = new URL(window.location.href)
-			url.searchParams.set("tab", "exceptions")
+			if (this.excScope !== "tenant") url.searchParams.set("tab", "exceptions")
 			url.searchParams.set("exception-id", id)
 			this.copyLink(url)
+		},
+		excWhere(exc) {
+			return exc.project ? "Project: " + exc.project : "Organisation level - applies across projects"
 		},
 		excApply(data) {
 			// same object as in the list, so the table follows
@@ -427,6 +463,21 @@ function exceptionsMixin() {
 		openAttachException() {
 			this.excAttachSelected = (this.selectedSubControl.exceptions || []).map(e => e.id)
 			this.showAttachExceptionModal = true
+			// organisation level exceptions can be attached in every project
+			this.excOrgExceptions = []
+			if (this.excTenantId) {
+				request("GET", `/api/v1/tenants/${this.excTenantId}/exceptions?scope=tenant`,
+					data => { this.excOrgExceptions = data },
+					error => console.log("Unable to load organisation level exceptions")
+				);
+			}
+		},
+		excAttachCandidates() {
+			const own = this.exceptions.filter(e => e.project_id)
+			const ids = new Set(own.map(e => e.id))
+			const org = [...this.exceptions.filter(e => !e.project_id), ...this.excOrgExceptions]
+				.filter(e => !ids.has(e.id) && (ids.add(e.id) || true))
+			return [...own, ...org].filter(e => e.status !== "closed" || this.excAttachSelected.includes(e.id))
 		},
 		toggleAttachException(id, checked) {
 			if (checked) {

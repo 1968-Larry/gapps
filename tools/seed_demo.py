@@ -386,6 +386,57 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
     return project, created, len(subs)
 
 
+# organisation level exceptions, linked to sub-controls in several projects
+ORG_EXCEPTION_TEMPLATES = [
+    ("Windows Server 2012 R2 still in use", "Asset management: no operating systems without vendor support.",
+     "Three legacy applications are not certified on a newer Windows version yet.",
+     "Extended security updates bought, servers in a restricted segment, extra EDR rules.",
+     "app-legacy01..03", "active"),
+    ("Shared admin account on network switches", "Access control: personal accounts for all administration.",
+     "The old switch models do not support RADIUS/TACACS for management logins.",
+     "Password in the vault with check-out logging, management only from the jump host.",
+     "Access switches, building B", "submitted"),
+]
+
+
+def add_org_exceptions(rng, tenant, users, today):
+    """Organisation level exceptions (no project), linked into every project."""
+    requester = users.get(demo_email("Maria", "Svensson"))
+    approver = users.get(demo_email("Erik", "Johansson"))
+    if not requester or not approver:
+        return 0
+    created = 0
+    for title, desc, why, comp, assets, state in ORG_EXCEPTION_TEMPLATES:
+        exc = tenant.create_exception(
+            {
+                "title": title,
+                "description": desc,
+                "justification": why,
+                "compensating_controls": comp,
+                "affected_assets": assets,
+                "likelihood": rng.randint(2, 3),
+                "impact": rng.randint(2, 4),
+                "assignee": requester.id,
+                "expiry_date": (today + timedelta(days=rng.choice([120, 180]))).isoformat(),
+            },
+            requested_by=requester.id,
+        )
+        created += 1
+        for project in tenant.projects.all():
+            subs = [
+                s
+                for pc in project.controls.all()
+                for s in pc.subcontrols.all()
+                if s.is_applicable and s.implemented < 100
+            ]
+            if subs:
+                rng.choice(subs).associate_with_exception(exc.id)
+        exc.submit(requester.id)
+        if state == "active":
+            exc.approve(approver.id, "Accepted for the organisation until the replacement project.")
+    return created
+
+
 def add_demo_exceptions(rng, project, today):
     """A handful of exceptions in every state, linked to open subcontrols and risks."""
     members = {}
@@ -548,6 +599,7 @@ def main():
         total_exceptions = 0
         for project in tenant.projects.order_by(Project.date_added).all():
             total_exceptions += add_demo_exceptions(erng, project, today)
+        total_exceptions += add_org_exceptions(random.Random(args.seed + 2), tenant, users, today)
 
         log("")
         log(

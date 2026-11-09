@@ -48,6 +48,14 @@ def risks(id):
     Authorizer(current_user).can_user_access_risk_module(id)
     return render_template("risk_register.html")
 
+@main.route("/tenants/<string:id>/exceptions", methods=["GET"])
+@login_required
+def exceptions(id):
+    """All exceptions of the organisation that the user may see."""
+    Authorizer(current_user).can_user_access_tenant(id)
+    return render_template("exceptions.html", tenant_id=id)
+
+
 @main.route("/tenants/<string:id>/policy-center", methods=["GET"])
 @login_required
 def view_policy_center(id):

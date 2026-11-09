@@ -22,6 +22,7 @@
 								<span class="subtitle text-xs !mb-0" x-text="'Exception - ' + selectedException.id"></span>
 								<input x-show="!excReadOnly(selectedException)" x-model="selectedException.title" @change="saveException()" class="input input-sm text-xl bg-transparent p-0 w-full" />
 								<span x-show="excReadOnly(selectedException)" class="text-xl" x-text="selectedException.title"></span>
+								<span class="text-xs opacity-70" x-text="excWhere(selectedException)"></span>
 							</div>
 							<div class="flex flex-row gap-x-2">
 								<button @click="copyExceptionLink(selectedException.id)" title="Copy link" class="btn btn-sm btn-ghost border border-base-300"><i class="ti ti-share text-xl"></i></button>
@@ -196,7 +197,7 @@
 								<button x-show="selectedException.can_manage" @click="showDeleteExceptionModal=true" class="btn btn-sm btn-ghost text-error ml-auto"><i class="ti ti-trash"></i>Delete</button>
 							</div>
 							<p class="text-xs opacity-70 mt-4">
-								Approval: project manager, risk manager or admin, never the person who requested it.
+								Approval: <span x-text="selectedException.project_id ? 'project manager, risk manager or admin' : 'risk manager or admin (organisation level)'"></span>, never the person who requested it.
 								An approved exception that is changed (assessment, dates, justification) has to be approved again.
 							</p>
 						</div>

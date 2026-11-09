@@ -1,0 +1,75 @@
+{% extends "layouts/sidebar-nav.html" %}
+
+{%block page_header_title%}Exceptions{%endblock%}
+{%block page_header_buttons%}
+<span class="text-sm opacity-70 my-auto">Approved, time limited deviations - in all your projects and at organisation level</span>
+{%endblock%}
+
+{%block content%}
+<div x-data="exceptionsPage()">
+	<div class="grid grid-cols-6 mt-4">
+		{% include "helpers/exceptions/tab.html" %}
+	</div>
+	{% include "helpers/exceptions/drawer.html" %}
+	{% include "helpers/exceptions/modals.html" %}
+</div>
+{%endblock%}
+
+{%block extrajs%}
+{% include "helpers/exceptions/script.html" %}
+<script>
+/* All exceptions of the organisation: the project tab in "tenant" scope. */
+function exceptionsPage() {
+	return {
+		...exceptionsMixin(),
+		excScope: "tenant",
+		excTenantId: "{{tenant_id}}",
+		// what the shared templates expect from the project page
+		selectedTab: "exceptions",
+		tabLoading: false,
+		projectId: null,
+		projectUsers: [],
+		risks: [],
+		selectedSubControl: null,
+		selectedControl: null,
+		selectedReport: null,
+		init() {
+			this.initExceptions()
+			request("GET", `/api/v1/tenants/${this.excTenantId}/users`,
+				data => { this.projectUsers = data },
+				error => console.log("Unable to load users")
+			);
+			request("GET", `/api/v1/tenants/${this.excTenantId}/risks`,
+				data => { this.risks = data },
+				error => console.log("Unable to load risks")
+			);
+			request("GET", `/api/v1/tenants/${this.excTenantId}/exception-projects`,
+				data => { this.excProjects = data },
+				error => console.log("Unable to load projects")
+			);
+		},
+		openRiskFromException(risk) {
+			window.location.href = risk.project_id
+				? `/projects/${risk.project_id}?tab=${encodeURIComponent("risk register")}`
+				: `/tenants/${this.excTenantId}/risk`
+		},
+		closeReportDrawer() {},
+		refreshControlFromServer() {},
+		simpleDate(dateString) {
+			const date = new Date(dateString)
+			return date.toLocaleDateString("en", {weekday: "short"}) + " " + date.getDate() + ", " + date.getFullYear()
+		},
+		copyLink(url = null) {
+			const text = (url || new URL(window.location.href)).toString()
+			const textarea = document.createElement("textarea")
+			textarea.value = text
+			document.body.appendChild(textarea)
+			textarea.select()
+			document.execCommand("copy")
+			document.body.removeChild(textarea)
+			toast("Link copied to your clipboard")
+		},
+	}
+}
+</script>
+{%endblock%}

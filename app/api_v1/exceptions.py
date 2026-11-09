@@ -77,9 +77,8 @@ def _log_decision(exc, event_name):
 @login_required
 def get_exceptions_for_project(pid):
     result = Authorizer(current_user).can_user_access_project(pid)
-    project = result["extra"]["project"]
-    exceptions = project.exceptions.order_by(models.PolicyException.date_added).all()
-    return jsonify(_with_links(exceptions))
+    # its own exceptions + organisation level ones linked to its sub-controls
+    return jsonify(_with_links(result["extra"]["project"].applicable_exceptions()))
 
 
 @api.route("/projects/<string:pid>/exceptions/summary", methods=["GET"])
@@ -104,6 +103,102 @@ def create_exception_for_project(pid):
         for sid in subcontrols if isinstance(subcontrols, list) else [subcontrols]:
             sub = Authorizer(current_user).can_user_manage_project_subcontrol(sid)
             sub["extra"]["subcontrol"].associate_with_exception(exc.id)
+    if risks := data.get("risks"):
+        exc.associate_with_risk(risks)
+    if data.get("submit"):
+        exc.submit(current_user.id)
+    return _one(exc)
+
+
+# --------------------------------------------------------------------------- #
+# All exceptions of the organisation (the collection page)
+# --------------------------------------------------------------------------- #
+def _visible_tenant_exceptions(tenant, scope=None):
+    """Every exception of the tenant the current user may read."""
+    authorizer = Authorizer(current_user)
+    query = models.PolicyException.query.filter(
+        models.PolicyException.tenant_id == tenant.id
+    )
+    if scope == "tenant":
+        query = query.filter(models.PolicyException.project_id.is_(None))
+    elif scope == "project":
+        query = query.filter(models.PolicyException.project_id.isnot(None))
+    allowed_projects = {}
+    result = []
+    for exc in query.order_by(models.PolicyException.date_added).all():
+        if exc.project_id:
+            if exc.project_id not in allowed_projects:
+                allowed_projects[exc.project_id] = authorizer._can_user_access_project(
+                    exc.project
+                )
+            if allowed_projects[exc.project_id]:
+                result.append(exc)
+        elif authorizer._can_user_read_exception(exc):
+            result.append(exc)
+    return result
+
+
+@api.route("/tenants/<string:tid>/exceptions", methods=["GET"])
+@login_required
+def get_exceptions_for_tenant(tid):
+    """?scope=tenant (organisation level only) or project (project ones only)"""
+    result = Authorizer(current_user).can_user_access_tenant(tid)
+    exceptions = _visible_tenant_exceptions(
+        result["extra"]["tenant"], request.args.get("scope")
+    )
+    return jsonify(_with_links(exceptions))
+
+
+@api.route("/tenants/<string:tid>/exceptions/summary", methods=["GET"])
+@login_required
+def get_exception_summary_for_tenant(tid):
+    result = Authorizer(current_user).can_user_access_tenant(tid)
+    exceptions = _visible_tenant_exceptions(result["extra"]["tenant"])
+    data = models.PolicyException.summarize(exceptions)
+    data["can_create_tenant_exception"] = Authorizer(
+        current_user
+    )._can_user_manage_risk(result["extra"]["tenant"])
+    return jsonify(data)
+
+
+@api.route("/tenants/<string:tid>/exception-projects", methods=["GET"])
+@login_required
+def get_exception_projects_for_tenant(tid):
+    """Projects of the user in this organisation (for the "Belongs to" picker)."""
+    result = Authorizer(current_user).can_user_access_tenant(tid)
+    authorizer = Authorizer(current_user)
+    data = [
+        {
+            "id": project.id,
+            "name": project.name,
+            "can_edit": authorizer._can_user_edit_project(project),
+        }
+        for project in current_user.get_projects(result["extra"]["tenant"].id)
+    ]
+    data.sort(key=lambda x: x["name"].lower())
+    return jsonify(data)
+
+
+@api.route("/tenants/<string:tid>/exceptions", methods=["POST"])
+@login_required
+def create_exception_for_tenant(tid):
+    """Organisation level exception, or a project exception when project_id is set."""
+    data = _payload()
+    if data.get("project_id"):
+        result = Authorizer(current_user).can_user_edit_project(data["project_id"])
+        project = result["extra"]["project"]
+        if project.tenant_id != tid:
+            return jsonify({"message": "The project is not in this organisation"}), 400
+        creator = lambda: project.create_exception(data, requested_by=current_user.id)
+    else:
+        result = Authorizer(current_user).can_user_create_tenant_exception(tid)
+        tenant = result["extra"]["tenant"]
+        creator = lambda: tenant.create_exception(data, requested_by=current_user.id)
+    try:
+        exc = creator()
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"message": str(e)}), 400
     if risks := data.get("risks"):
         exc.associate_with_risk(risks)
     if data.get("submit"):
@@ -136,10 +231,9 @@ def update_exception(id):
     if "assignee" in data:
         if exc.status == "closed":
             return jsonify({"message": "A closed exception can not be changed"}), 400
-        if exc.project_id:
-            exc.assignee = exc.project.validate_risk_assignee(data.get("assignee"))
-        else:
-            exc.assignee = data.get("assignee") or None
+        exc.assignee = models.PolicyException.validate_assignee(
+            exc.tenant, data.get("assignee")
+        )
     try:
         exc.update(data)
     except ValueError as e:
@@ -305,7 +399,7 @@ def get_exceptions_for_risk(id):
     authorizer = Authorizer(current_user)
     data = []
     for exc in result["extra"]["risk"].exceptions.all():
-        if exc.project_id and not authorizer._can_user_access_project(exc.project):
+        if not authorizer._can_user_read_exception(exc):
             continue
         data.append(exc.summary())
     return jsonify(data)

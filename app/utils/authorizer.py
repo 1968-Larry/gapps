@@ -620,14 +620,47 @@ class Authorizer:
         project = self._exception_project(exception)
         return bool(project and project.has_member_with_access(self.user, ["manager"]))
 
+    def _can_user_read_exception(self, exception):
+        """
+        Project exception: any project member. Organisation level exception:
+        risk module users, and members of a project it is linked to (so it can
+        be opened from the sub-control it applies to).
+        """
+        project = self._exception_project(exception)
+        if project:
+            return self._can_user_access_project(project)
+        tenant = exception.tenant
+        # risk module users, except vendors (external parties)
+        if (
+            self.user.super
+            or self.user.id == tenant.owner_id
+            or self.user.has_any_role_for_tenant(
+                tenant, ["admin", "viewer", "riskmanager", "riskviewer"]
+            )
+        ):
+            return True
+        seen = set()
+        for subcontrol in exception.project_subcontrols.all():
+            if subcontrol.project_id in seen:
+                continue
+            seen.add(subcontrol.project_id)
+            if self._can_user_access_project(subcontrol.project):
+                return True
+        return False
+
     def can_user_read_exception(self, exception):
         if not (exception := self.id_to_obj("PolicyException", exception)):
             return self.return_response(False, "exception not found", 404)
-        project = self._exception_project(exception)
-        if project and self._can_user_access_project(project):
+        if self._can_user_read_exception(exception):
             return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
-        if not project and self._can_user_access_risk_module(exception.tenant):
-            return self.return_response(True, AUTHORIZED_MSG, 200, exception=exception)
+        return self.return_response(False, UNAUTHORIZED_MSG, 403)
+
+    def can_user_create_tenant_exception(self, tenant):
+        """Organisation level exceptions: same people as organisation level risks."""
+        if not (tenant := self.id_to_obj("Tenant", tenant)):
+            return self.return_response(False, "tenant not found", 404)
+        if self._can_user_manage_risk(tenant):
+            return self.return_response(True, AUTHORIZED_MSG, 200, tenant=tenant)
         return self.return_response(False, UNAUTHORIZED_MSG, 403)
 
     def can_user_edit_exception(self, exception):
