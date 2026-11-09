@@ -166,9 +166,13 @@ def get_risks_for_tenant(id):
     links = bulk_risk_links(
         [r.id for r in risks], can_access=authorizer._can_user_access_project
     )
+    linked_exceptions = bulk_risk_exceptions(
+        [r.id for r in risks], can_read=authorizer._can_user_read_exception
+    )
     for risk in risks:
         item = risk.as_dict()
         item["links"] = links.get(risk.id, [])
+        item["exceptions"] = linked_exceptions.get(risk.id, [])
         data.append(item)
     return jsonify(data)
 

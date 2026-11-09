@@ -423,6 +423,8 @@ function exceptionsMixin() {
 					this.excApply(data)
 					this.excRiskToAdd = ""
 					toast("Risk linked")
+					// the risk tables show linked exceptions too
+					if (typeof this.getRisks === "function") this.getRisks()
 				},
 				error => toast(error.message, "error"),
 				{risk: [this.excRiskToAdd]}
@@ -433,6 +435,8 @@ function exceptionsMixin() {
 				data => {
 					this.excApply(data)
 					toast("Risk unlinked")
+					// the risk tables show linked exceptions too
+					if (typeof this.getRisks === "function") this.getRisks()
 				},
 				error => toast(error.message, "error"),
 				{risk: [riskId]}

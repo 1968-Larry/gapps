@@ -4554,7 +4554,14 @@ class PolicyException(db.Model, AssessmentMixin, HistoryMixin):
             "days_left": self.days_left(today),
             "project_id": self.project_id,
             "scope": "project" if self.project_id else "tenant",
+            "url": self.url(),
         }
+
+    def url(self):
+        """Where the exception opens: its project tab, or the collection page."""
+        if self.project_id:
+            return f"/projects/{self.project_id}?tab=exceptions&exception-id={self.id}"
+        return f"/tenants/{self.tenant_id}/exceptions?exception-id={self.id}"
 
     def as_dict(self, include_comments=True):
         today = datetime.utcnow().date()
@@ -4707,6 +4714,35 @@ def _exception_before_update(mapper, connection, target):
             logging.getLogger(__name__).debug(
                 "exception history (update) failed", exc_info=True
             )
+
+
+def bulk_risk_exceptions(risk_ids, can_read=None):
+    """
+    {risk_id: [exception summary, ...]} for many risks with one query, for the
+    risk tables. `can_read(exception)` filters out what the caller may not see.
+    """
+    result = {}
+    if not risk_ids:
+        return result
+    rows = (
+        db.session.query(ExceptionRiskAssociation.risk_id, PolicyException)
+        .join(
+            PolicyException,
+            PolicyException.id == ExceptionRiskAssociation.exception_id,
+        )
+        .filter(ExceptionRiskAssociation.risk_id.in_(list(risk_ids)))
+        .all()
+    )
+    allowed = {}
+    today = datetime.utcnow().date()
+    for risk_id, exc in rows:
+        if can_read is not None:
+            if exc.id not in allowed:
+                allowed[exc.id] = bool(can_read(exc))
+            if not allowed[exc.id]:
+                continue
+        result.setdefault(risk_id, []).append(exc.summary(today))
+    return result
 
 
 def bulk_exception_links(exception_ids, can_access=None):
