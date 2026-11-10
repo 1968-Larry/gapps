@@ -85,6 +85,8 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   per project shows implemented, evidence, gaps, open risks and exceptions
 - Gap report: a summary per project, sub-controls excluded without a justification and the
   sub-controls that are not done (not implemented / not complete / missing evidence), grouped by project
+- Common gaps: the same sub-control over the selected projects as one row, the gaps found in most
+  projects first, with the status in each project (the Gaps page as a report)
 - Risk register and exception register over the selected projects
 - Everybody reports on the projects they can open; the CISO on every project
 

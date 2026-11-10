@@ -108,7 +108,7 @@
 		</div>
 	</div>
 
-	<div class="col-span-6 grid grid-cols-3 gap-4" x-show="!loading && projects.length">
+	<div class="col-span-6 grid grid-cols-4 gap-4" x-show="!loading && projects.length">
 		<div class="card bg-base-100 border border-base-300">
 			<div class="card-body">
 				<h3 class="card-title text-base"><i class="ti ti-list-check"></i>Gaps</h3>
@@ -126,6 +126,33 @@
 				<div class="card-actions mt-2">
 					<button :disabled="reportBusy" @click="gapsReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
 					<button :disabled="reportBusy" @click="gapsReport('csv')" class="btn btn-sm">CSV (Excel)</button>
+				</div>
+			</div>
+		</div>
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<h3 class="card-title text-base"><i class="ti ti-chart-bar"></i>Common Gaps</h3>
+				<p class="text-sm opacity-70">The same sub-control over the selected projects, grouped: the gaps found in most projects come first, with the status in each project.</p>
+				<label class="form-control mt-2">
+					<span class="label-text text-xs mb-1">Sub-control status</span>
+					<select x-model="commonStatus" class="select select-sm select-bordered">
+						<option value="not_complete">Not complete (not fully implemented or no evidence)</option>
+						<option value="not_implemented">Not implemented</option>
+						<option value="missing_evidence">Missing evidence</option>
+					</select>
+				</label>
+				<label class="form-control">
+					<span class="label-text text-xs mb-1">Found in</span>
+					<select x-model.number="commonMin" class="select select-sm select-bordered">
+						<option value="1">Any number of projects</option>
+						<option value="2">At least 2 projects</option>
+						<option value="3">At least 3 projects</option>
+						<option value="5">At least 5 projects</option>
+					</select>
+				</label>
+				<div class="card-actions mt-2">
+					<button :disabled="reportBusy" @click="commonGapsReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
+					<button :disabled="reportBusy" @click="commonGapsReport('csv')" class="btn btn-sm">CSV (Excel)</button>
 				</div>
 			</div>
 		</div>
@@ -168,6 +195,8 @@ function orgReports() {
 		excluded: [],
 		includeOrg: true,
 		gapFilter: "not_implemented",
+		commonStatus: "not_complete",
+		commonMin: 2,
 		projects: [],
 		gaps: [],
 		withoutJustification: [],
@@ -285,10 +314,10 @@ function orgReports() {
 		rptScope() {
 			return this.tenantName || "Organisation"
 		},
-		rptSubtitle() {
+		rptSubtitle(withOrg = true) {
 			const n = this.projects.length
 			return this.rptScope() + "  |  " + (n === this.projectList.length ? "All projects" : n + " of " + this.projectList.length + " projects") +
-				" (" + n + ")" + (this.includeOrg ? " + organisation level" : "") + "  |  " + this.rptToday()
+				" (" + n + ")" + (withOrg && this.includeOrg ? " + organisation level" : "") + "  |  " + this.rptToday()
 		},
 		rptEmail(id) {
 			const r = this.risks.find(x => x.assignee === id)
@@ -299,6 +328,51 @@ function orgReports() {
 			if (this.gapFilter === "not_implemented") return this.gaps.filter(g => !g.implemented)
 			if (this.gapFilter === "missing_evidence") return this.gaps.filter(g => !g.evidence)
 			return this.gaps
+		},
+
+		// -- Common gaps: the same sub-control over the projects (the Gaps page as a report)
+		commonGapsReport(format) {
+			this.rptRun(async () => {
+				const params = new URLSearchParams({status: this.commonStatus, min_projects: this.commonMin})
+				if (this.excluded.length) params.set("exclude", this.excluded.join(","))
+				const data = await new Promise((resolve, reject) => request("GET",
+					`/api/v1/tenants/${this.tenantId()}/gaps?${params.toString()}`,
+					d => resolve(d), e => reject(new Error(e.message || "request failed"))))
+				const groups = data.groups
+				const statusText = i => i.implementation.replace(/_/g, " ") + (i.implementation === "partially_implemented" ? ` (${i.implemented}%)` : "") +
+					(i.has_evidence ? "" : ", no evidence")
+				const titles = {not_complete: "not complete", not_implemented: "not implemented", missing_evidence: "missing evidence"}
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("common-gaps", "csv"),
+						["Framework", "Ref", "Sub-control", "Control", "Projects matching", "Projects with the sub-control", "Project",
+						 "Implementation", "Implemented %", "Evidence", "Owner", "Open risks", "Ticket"],
+						groups.flatMap(g => g.items.map(i => [g.framework, g.ref_code, g.name, `${g.control_ref_code} ${g.control}`,
+							g.gaps, g.projects, i.project, i.implementation.replace(/_/g, " "), i.implemented, i.has_evidence ? "yes" : "no",
+							i.owner, i.open_risks, i.ticket_number])))
+					return
+				}
+				const ctx = await this.rptStart("Common Gaps", this.rptSubtitle(false), true)
+				const t = data.totals
+				this.rptStats(ctx, [
+					["Projects", data.projects],
+					["Sub-controls listed", groups.length],
+					["In every project", groups.filter(g => g.gaps === data.projects).length],
+					["Not implemented", t.not_implemented, t.not_implemented ? [220, 38, 38] : null],
+					["Partially implemented", t.partially_implemented, [202, 138, 4]],
+					["Missing evidence", t.missing_evidence, t.missing_evidence ? [202, 138, 4] : null],
+				])
+				this.rptHeading(ctx, "Sub-controls " + titles[this.commonStatus] + (this.commonMin > 1 ? ` in at least ${this.commonMin} projects` : ""),
+					"The same sub-control in several projects is one row; the ones found in most projects come first. A gap shared by " +
+					"many projects is usually best solved once, centrally.")
+				this.rptTable(ctx, ["Sub-control", "Framework", "Projects", "Status per project"],
+					groups.map(g => {
+						const name = g.name.length > 150 ? g.name.slice(0, 147).trim() + "..." : g.name
+						return [`${g.ref_code} ${name}`, this.fwLabel(g.framework), `${g.gaps} of ${g.projects}`,
+							g.items.map(i => `${i.project}: ${statusText(i)}${i.open_risks ? ", " + i.open_risks + " open risk(s)" : ""}`).join("\n")]
+					}),
+					{columnStyles: {0: {cellWidth: 95}, 1: {cellWidth: 32}, 2: {cellWidth: 20, halign: "center"}, 3: {cellWidth: 120}}})
+				this.rptFinish(ctx, this.rptFileName("common-gaps", "pdf"))
+			})
 		},
 
 		// -- Gaps report ------------------------------------------------------------------
@@ -318,7 +392,7 @@ function orgReports() {
 				}
 				const sum = key => this.projects.reduce((t, p) => t + (p[key] || 0), 0)
 				const applicable = sum("applicable")
-				const ctx = await this.rptStart("Gap Report", this.rptSubtitle(), true)
+				const ctx = await this.rptStart("Gap Report", this.rptSubtitle(false), true)
 				this.rptStats(ctx, [
 					["Projects", this.projects.length],
 					["Applicable sub-controls", applicable],
