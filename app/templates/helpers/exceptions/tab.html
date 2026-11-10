@@ -179,10 +179,10 @@
 								<span class="text-xs opacity-50">-</span>
 							</template>
 							<div class="flex flex-wrap gap-1">
-								<template x-for="link in (exc.links || []).slice(0, 3)" :key="link.id">
-									<a :href="link.url" :title="link.project + ' / ' + link.framework + ' / ' + link.name" class="badge badge-outline badge-sm hover:opacity-75" x-text="link.ref_code"></a>
+								<template x-for="link in excRefLinks(exc).slice(0, 3)" :key="link.id">
+									<a :href="link.url" :title="link.project + ' / ' + link.framework + ' / ' + link.name" class="badge badge-outline badge-sm hover:opacity-75 whitespace-nowrap" x-text="link.ref_code"></a>
 								</template>
-								<button x-show="exc.links && exc.links.length>3" @click="openExceptionDrawer(exc); changeExcTab('links')" class="badge badge-sm" x-text="'+' + (exc.links.length-3)"></button>
+								<button x-show="excRefLinks(exc).length>3" @click="openExceptionDrawer(exc); changeExcTab('links')" class="badge badge-sm" x-text="'+' + (excRefLinks(exc).length-3)"></button>
 							</div>
 						</td>
 						<td>
