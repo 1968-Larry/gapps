@@ -80,6 +80,14 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   UTF-8 with BOM)
 - The Executive / Technical report also show open risks per level and the exceptions
 
+**Reports across projects (More > Reports)**
+- Pick the projects (and whether organisation level risks and exceptions are included); an overview
+  per project shows implemented, evidence, gaps, open risks and exceptions
+- Gap report: a summary per project, sub-controls excluded without a justification and the
+  sub-controls that are not done (not implemented / not complete / missing evidence), grouped by project
+- Risk register and exception register over the selected projects
+- Everybody reports on the projects they can open; the CISO on every project
+
 **Reporting across projects**
 - Gaps page (menu: More > gaps): sub-controls grouped across all projects to show common gaps.
   Filter on status (not complete, not implemented, partial, missing evidence ...), framework and
@@ -155,6 +163,14 @@ Statement of Applicability (PDF)          |
 Exception register (PDF)          |
 :-------------------------:|
 ![](img/gapps_report_exceptions.png)  |
+
+Reports across projects          |
+:-------------------------:|
+![](img/gapps_org_reports.png)  |
+
+Gap report over several projects (PDF)          |
+:-------------------------:|
+![](img/gapps_report_gaps.png)  |
 
 ### Getting Started
 
