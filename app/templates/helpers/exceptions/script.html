@@ -151,6 +151,11 @@ function exceptionsMixin() {
 		excLevelCount(level) {
 			return this.exceptions.filter(e => e.risk === level && !["closed", "rejected"].includes(e.state)).length
 		},
+		// one badge per control ref (an organisation exception can hit the same control in several projects)
+		excRefLinks(exc) {
+			const seen = new Set();
+			return (exc.links || []).filter(l => !seen.has(l.ref_code) && seen.add(l.ref_code));
+		},
 		excStateClass(state) {
 			return {
 				// text colour set here too: a fixed light text is invisible on the

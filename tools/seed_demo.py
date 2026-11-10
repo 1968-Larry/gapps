@@ -29,16 +29,22 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import func
 from app import create_app
+import demo_data  # curated exceptions, topics and justifications (tools/demo_data.py)
 from app.models import (
     db,
     Control,
     EvidenceAssociation,
+    ExceptionComment,
+    ExceptionHistory,
     Framework,
     Logs,
     PolicyException,
     Project,
+    ProjectSubControl,
     RiskAssociation,
     RiskComment,
+    RiskHistory,
+    RiskRegister,
     Tenant,
     TenantMember,
     User,
@@ -111,34 +117,6 @@ EVIDENCE_TEMPLATES = [
     ("Policy approval record", "Management approval of the security policies."),
     ("Encryption configuration", "Screenshots of encryption settings."),
     ("Monitoring dashboard export", "Alerting rules and last month's alerts."),
-]
-
-# (title, description, justification, compensating controls, affected assets)
-EXCEPTION_TEMPLATES = [
-    ("SMBv1 enabled on document scanners", "Hardening baseline: SMBv1 must be disabled on all hosts.",
-     "The scanner firmware only supports SMBv1 and the vendor has no update.",
-     "Scanners in their own VLAN, firewall only allows TCP/445 to the scan file server.", "scan01, scan02"),
-    ("Patch window missed for ERP database", "Patch policy: critical patches within 14 days.",
-     "The ERP vendor has not yet certified the latest database patch level.",
-     "Extra monitoring of the database host, access limited to the application servers.", "erp-db01"),
-    ("Local admin rights for CAD workstations", "Least privilege: no local administrator rights for end users.",
-     "The CAD licence tool needs local admin rights to update its dongle driver.",
-     "EDR in blocking mode, separate admin account only used for the licence tool.", "CAD workstation group (12 PCs)"),
-    ("Legacy TLS 1.0 on badge system", "Encryption standard: TLS 1.2 or newer for all services.",
-     "The badge readers can only talk TLS 1.0 to the controller.",
-     "Controller and readers on an isolated network without internet access.", "badge-ctrl01"),
-    ("Password expiry disabled for service account", "Password policy: service account passwords rotated yearly.",
-     "Rotating the password breaks an integration that can not be updated before the replacement project.",
-     "Long random password stored in the vault, logon restricted to two servers.", "svc-integration"),
-    ("No MFA for shop floor terminals", "Access control: MFA for all interactive logons.",
-     "Shared terminals in the production hall, gloves and dust make tokens impractical.",
-     "Terminals kiosk-locked, only the MES application, no network access outside the OT zone.", "OT kiosk terminals"),
-    ("Unsupported OS on lab instrument PC", "Asset management: no operating systems without vendor support.",
-     "The instrument software only runs on Windows 7 and the instrument is replaced next year.",
-     "PC disconnected from the network, data moved with a scanned USB stick.", "lab-pc-07"),
-    ("Log retention shorter than policy", "Logging: security logs kept for 12 months.",
-     "Storage on the old log server is full until the SIEM migration is done.",
-     "Critical logs forwarded to the SIEM already, others kept 90 days.", "log01"),
 ]
 
 IMPLEMENTED_CONTEXT = [
@@ -319,10 +297,17 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
     subs = []
     for pc in project.controls.all():
         subs.extend(pc.subcontrols.all())
+    # not applicable controls get a justification - except one in the first
+    # project, so the Statement of Applicability shows its warning
+    leave_one_without = index == 0
     for psc in subs:
         if rng.random() < 0.04:
             psc.is_applicable = False
             psc.implemented = 0
+            if leave_one_without:
+                leave_one_without = False
+            else:
+                psc.notes = rng.choice(demo_data.NA_JUSTIFICATIONS)
             continue
         if psc.subcontrol_id in common_gaps and rng.random() < 0.75:
             roll = 2  # shared weak spot: mostly not implemented
@@ -346,7 +331,12 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
     # risks
     open_subs = [s for s in subs if s.is_applicable and s.implemented < 100]
     created = 0
-    for title, desc, remediation in rng.sample(RISK_TEMPLATES, rng.randint(6, 11)):
+    # the risks the project's exceptions refer to (demo_data) are always there
+    needed = {i.get("risk") for i in demo_data.PROJECT_EXCEPTIONS.get(name, [])} - {None}
+    others = [t for t in RISK_TEMPLATES if t[0] not in needed]
+    chosen = [t for t in RISK_TEMPLATES if t[0] in needed]
+    chosen += rng.sample(others, max(0, rng.randint(6, 11) - len(chosen)))
+    for title, desc, remediation in chosen:
         status = weighted(rng, {"new": 25, "in_progress": 40, "mitigated": 20, "accepted": 15})
         review, due = pick_review_dates(rng, today, status)
         risk = project.create_risk(
@@ -363,8 +353,13 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
         )
         risk.remediation = remediation
         created += 1
-        # link to one to three subcontrols that are not done yet
-        for psc in rng.sample(open_subs, min(len(open_subs), rng.randint(1, 3))):
+        # link to the controls the risk is about (demo_data.RISK_TOPICS)
+        topic_subs = []
+        for topic in demo_data.RISK_TOPICS.get(title, []):
+            topic_subs.extend(topic_subcontrols(project, topic))
+        if not topic_subs:
+            topic_subs = rng.sample(open_subs, min(len(open_subs), 1))
+        for psc in topic_subs[:4]:
             RiskAssociation.add([psc.id], risk.id, commit=False)
         for _ in range(rng.choice([0, 0, 1, 2])):
             db.session.add(
@@ -386,130 +381,260 @@ def build_project(rng, tenant, index, spec, frameworks, controls_by_fw, users, c
     return project, created, len(subs)
 
 
-# organisation level exceptions, linked to sub-controls in several projects
-ORG_EXCEPTION_TEMPLATES = [
-    ("Windows Server 2012 R2 still in use", "Asset management: no operating systems without vendor support.",
-     "Three legacy applications are not certified on a newer Windows version yet.",
-     "Extended security updates bought, servers in a restricted segment, extra EDR rules.",
-     "app-legacy01..03", "active"),
-    ("Shared admin account on network switches", "Access control: personal accounts for all administration.",
-     "The old switch models do not support RADIUS/TACACS for management logins.",
-     "Password in the vault with check-out logging, management only from the jump host.",
-     "Access switches, building B", "submitted"),
-]
+# --------------------------------------------------------------------------- #
+# Topics: find the sub-control(s) of a topic in a project
+# --------------------------------------------------------------------------- #
+def norm_ref(ref):
+    return "".join(str(ref or "").split()).lower()
 
 
-def add_org_exceptions(rng, tenant, users, today):
-    """Organisation level exceptions (no project), linked into every project."""
-    requester = users.get(demo_email("Maria", "Svensson"))
-    approver = users.get(demo_email("Erik", "Johansson"))
-    if not requester or not approver:
-        return 0
+def backdate_risks(tenant):
+    """
+    Spread the risks over the last year instead of all being created today (the
+    risk register filters on created date). History and comments follow along.
+    """
+    rng = random.Random(f"{tenant.id}-risk-dates")
+    now = datetime.utcnow()
+    for risk in RiskRegister.query.filter_by(tenant_id=tenant.id).order_by(RiskRegister.title).all():
+        start = now - timedelta(days=rng.randint(12, 420), hours=rng.randint(0, 9))
+        risk.date_added = start
+        for i, entry in enumerate(risk.history.order_by(RiskHistory.date_added).all()):
+            entry.date_added = start + timedelta(minutes=5 * i)
+        for i, comment in enumerate(risk.comments.all()):
+            comment.date_added = start + timedelta(days=rng.randint(1, max(1, (now - start).days - 1)), hours=i)
+    db.session.commit()
+
+
+def topic_subcontrols(project, topic, add_missing=True):
+    """
+    Project sub-controls for a topic (see demo_data.TOPIC_REFS), in every framework
+    of the project. When the project did not pick the control that holds the
+    sub-control, the control is added (a real project would have it).
+    """
+    refs = demo_data.TOPIC_REFS.get(topic, {})
+    found = []
+    for framework in {pc.control.framework for pc in project.controls.all()}:
+        wanted = {norm_ref(r) for r in refs.get(framework.name, [])}
+        if not wanted:
+            continue
+        subs = [
+            psc
+            for pc in project.controls.all()
+            if pc.control.framework_id == framework.id
+            for psc in pc.subcontrols.all()
+            if norm_ref(psc.subcontrol.ref_code) in wanted
+        ]
+        if not subs and add_missing:
+            for control in framework.controls.all():
+                if any(norm_ref(sc.ref_code) in wanted for sc in control.subcontrols.all()):
+                    project.add_control(control)
+                    db.session.commit()
+                    pc = project.has_control(control.id)
+                    for psc in pc.subcontrols.all():
+                        psc.implemented = 0
+                    db.session.commit()
+                    subs = [psc for psc in pc.subcontrols.all() if norm_ref(psc.subcontrol.ref_code) in wanted]
+                    break
+        found.extend(subs)
+    return found
+
+
+# --------------------------------------------------------------------------- #
+# Exceptions: walk each one through the real workflow, then date its history
+# back so it looks like it has been in use for a while
+# --------------------------------------------------------------------------- #
+def _date_back(exc, story, today):
+    """Spread the history entries over the days of the story and fix the dates."""
+    days = demo_data.STORIES[story]["days"]
+    entries = exc.history.order_by(ExceptionHistory.date_added).all()
+    stamps = {}
+    for entry, ago in zip(entries, days):
+        when = datetime.combine(today - timedelta(days=ago), datetime.min.time()) + timedelta(
+            hours=8 + (ago * 7) % 9, minutes=(ago * 13) % 60
+        )
+        entry.date_added = when
+        stamps.setdefault(entry.event, []).append(when.date())
+    exc.date_added = entries[0].date_added if entries else exc.date_added
+    if "submitted" in stamps or "resubmitted" in stamps:
+        exc.submitted_date = max(stamps.get("submitted", []) + stamps.get("resubmitted", []))
+    for event in ("approved", "rejected"):
+        if event in stamps:
+            exc.decided_date = max(stamps[event])
+    if "approved" in stamps and story != "renewed":
+        exc.valid_from = stamps["approved"][0]
+    elif "approved" in stamps:
+        exc.valid_from = stamps["approved"][-1]
+    if "closed" in stamps:
+        exc.closed_date = stamps["closed"][-1]
+    exc.expiry_date = today + timedelta(days=demo_data.STORIES[story]["expiry"])
+    exc._skip_history = True
+    db.session.commit()
+
+
+def _pick_approver(exc, not_this, turn=0):
+    """
+    Someone who may decide, with the lowest role that is enough for the level (a
+    security manager decides a low exception, not the CISO); `turn` rotates
+    between people with that role so the demo shows different approvers.
+    """
+    candidates = [u for u in exc.eligible_approvers() if u.id != not_this]
+    if candidates:
+        lowest = min(exc.approver_rank(u) for u in candidates)
+        same = sorted((u for u in candidates if exc.approver_rank(u) == lowest), key=lambda u: u.email)
+        return same[turn % len(same)].id
+    # nobody else holds the role: an admin decides (the app allows that fallback)
+    for user in exc.tenant.users_with_role("admin"):
+        if user.id != not_this and exc.user_can_approve(user):
+            return user.id
+    return None
+
+
+def run_story(exc, story, requester_id, note, today, turn=0):
+    """Workflow steps for a story (see demo_data.STORIES)."""
+    if story == "draft":
+        return
+    exc.submit(requester_id)
+    if story == "awaiting":
+        return
+    approver = _pick_approver(exc, requester_id, turn)
+    if not approver:
+        return
+    if story in ("rejected", "reworked"):
+        exc.reject(approver, note or "Please describe the compensating controls in more detail.")
+        if story == "reworked":
+            exc.update({"compensating_controls": exc.compensating_controls + " Updated after review."})
+            exc.submit(requester_id)
+        return
+    exc.approve(approver, note)
+    if story == "renewed":
+        # extended: back for approval, approved again (the expiry is set in _date_back)
+        exc.update({"expiry_date": (today + timedelta(days=170)).isoformat()}, confirm_resubmit=True)
+        exc.approve(approver, note)
+    elif story == "closed":
+        exc.close("The deviation is fixed.")
+
+
+def _add_comments(exc, comments, people, today, tenant_id):
+    entries = exc.history.order_by(ExceptionHistory.date_added).all()
+    start = entries[0].date_added if entries else datetime.utcnow()
+    for i, (who, text) in enumerate(comments or []):
+        owner = people.get(who) or people.get("requester")
+        if not owner:
+            continue
+        comment = ExceptionComment(
+            message=text, owner_id=owner, exception_id=exc.id, tenant_id=tenant_id
+        )
+        db.session.add(comment)
+        db.session.flush()
+        comment.date_added = start + timedelta(days=1 + i, hours=2)
+    db.session.commit()
+
+
+def _link_risk(exc, project, template_title):
+    if not template_title or not project:
+        return
+    for risk in project.risks.all():
+        if risk.title.startswith(template_title):
+            exc.associate_with_risk(risk.id)
+            return
+
+
+def _mark_deviation(subcontrols):
+    """A control with an exception is not fully in place for every system."""
+    for psc in subcontrols:
+        if psc.implemented == 100:
+            psc.implemented = 50
+            psc.context = "Implemented, except for the systems covered by an approved exception."
+    db.session.commit()
+
+
+def add_demo_exceptions(tenant, today):
+    """
+    Curated exceptions (demo_data.PROJECT_EXCEPTIONS / ORG_EXCEPTIONS): each one on
+    the control it deviates from, linked to the matching risk, with a history of
+    submissions, decisions and comments in the past.
+    """
+    projects = {p.name: p for p in tenant.projects.all()}
     created = 0
-    for title, desc, why, comp, assets, state in ORG_EXCEPTION_TEMPLATES:
+    for name, items in demo_data.PROJECT_EXCEPTIONS.items():
+        project = projects.get(name)
+        if not project:
+            continue
+        members = {m.user_id: m.access_level for m in project.members.all()}
+        # the CISO decides on exceptions, so he is not the one asking for them here
+        ciso = {u.id for u in tenant.users_with_role("ciso")}
+        editors = sorted(
+            uid for uid, lvl in members.items() if lvl in ("contributor", "manager") and uid not in ciso
+        )
+        for i, item in enumerate(items):
+            requester = editors[i % len(editors)]
+            exc = project.create_exception(
+                {
+                    "title": item["title"],
+                    "description": item["description"],
+                    "justification": item["justification"],
+                    "compensating_controls": item["compensating"],
+                    "affected_assets": item["assets"],
+                    "likelihood": item["likelihood"],
+                    "impact": item["impact"],
+                    "assignee": requester,
+                    "expiry_date": (today + timedelta(days=150)).isoformat(),
+                    "ticket_number": f"CHG-{4100 + created * 7}",
+                },
+                requested_by=requester,
+            )
+            created += 1
+            subs = topic_subcontrols(project, item["topic"])
+            for psc in subs:
+                psc.associate_with_exception(exc.id)
+            _link_risk(exc, project, item.get("risk"))
+            run_story(exc, item["story"], requester, item.get("note"), today, turn=created)
+            _date_back(exc, item["story"], today)
+            if exc.state() in ("active", "expired", "submitted"):
+                _mark_deviation(subs)
+            _add_comments(
+                exc, item.get("comments"),
+                {"requester": requester, "owner": requester, "approver": exc.decided_by
+                 or (_pick_approver(exc, requester))},
+                today, tenant.id,
+            )
+
+    # organisation level: requested by the security manager, decided by the CISO
+    requester = User.find_by_email(demo_email("Maria", "Svensson"))
+    for item in demo_data.ORG_EXCEPTIONS:
+        if not requester:
+            break
         exc = tenant.create_exception(
             {
-                "title": title,
-                "description": desc,
-                "justification": why,
-                "compensating_controls": comp,
-                "affected_assets": assets,
-                "likelihood": rng.randint(2, 3),
-                "impact": rng.randint(2, 4),
+                "title": item["title"],
+                "description": item["description"],
+                "justification": item["justification"],
+                "compensating_controls": item["compensating"],
+                "affected_assets": item["assets"],
+                "likelihood": item["likelihood"],
+                "impact": item["impact"],
                 "assignee": requester.id,
-                "expiry_date": (today + timedelta(days=rng.choice([120, 180]))).isoformat(),
+                "expiry_date": (today + timedelta(days=150)).isoformat(),
             },
             requested_by=requester.id,
         )
         created += 1
-        for project in tenant.projects.all():
-            subs = [
-                s
-                for pc in project.controls.all()
-                for s in pc.subcontrols.all()
-                if s.is_applicable and s.implemented < 100
-            ]
-            if subs:
-                rng.choice(subs).associate_with_exception(exc.id)
-        exc.submit(requester.id)
-        if state == "active":
-            deciders = [u.id for u in exc.eligible_approvers()]
-            exc.approve(
-                approver.id if approver.id in deciders else deciders[0],
-                "Accepted for the organisation until the replacement project.",
-            )
+        linked = []
+        for name in item["projects"]:
+            if project := projects.get(name):
+                subs = topic_subcontrols(project, item["topic"])
+                for psc in subs:
+                    psc.associate_with_exception(exc.id)
+                linked.extend(subs)
+        run_story(exc, item["story"], requester.id, item.get("note"), today, turn=created)
+        _date_back(exc, item["story"], today)
+        if exc.state() in ("active", "expired", "submitted"):
+            _mark_deviation(linked)
+        _add_comments(exc, item.get("comments"),
+                      {"requester": requester.id, "owner": requester.id,
+                       "approver": exc.decided_by or _pick_approver(exc, requester.id)},
+                      today, tenant.id)
     return created
-
-
-def add_demo_exceptions(rng, project, today):
-    """A handful of exceptions in every state, linked to open subcontrols and risks."""
-    members = {}
-    for m in project.members.all():
-        members.setdefault(m.access_level, []).append(m.user_id)
-    approvers = members.get("manager", [])
-    requesters = members.get("contributor", []) or approvers
-    if not approvers or not requesters:
-        return 0
-    subs = [
-        s
-        for pc in project.controls.all()
-        for s in pc.subcontrols.all()
-        if s.is_applicable and s.implemented < 100
-    ]
-    risks = project.risks.all()
-    plan = ["active", "active", "active", "expiring", "expired", "submitted", "draft", "rejected", "closed"]
-    created = 0
-    for (title, desc, why, comp, assets), state in zip(
-        rng.sample(EXCEPTION_TEMPLATES, min(len(EXCEPTION_TEMPLATES), rng.randint(4, 7))),
-        rng.sample(plan, len(plan)),
-    ):
-        requester = rng.choice(requesters)
-        approver = rng.choice([a for a in approvers if a != requester] or approvers)
-        expiry = today + timedelta(days=rng.choice([45, 90, 120, 180, 270]))
-        if state == "expiring":
-            expiry = today + timedelta(days=rng.randint(3, 20))
-        exc = project.create_exception(
-            {
-                "title": title,
-                "description": desc,
-                "justification": why,
-                "compensating_controls": comp,
-                "affected_assets": assets,
-                "likelihood": weighted(rng, {1: 15, 2: 45, 3: 30, 4: 10}),
-                "impact": weighted(rng, {1: 10, 2: 35, 3: 35, 4: 20}),
-                "assignee": requester,
-                "expiry_date": expiry.isoformat(),
-                "ticket_number": f"CHG-{rng.randint(1000, 9999)}" if rng.random() < 0.6 else None,
-            },
-            requested_by=requester,
-        )
-        created += 1
-        for psc in rng.sample(subs, min(len(subs), rng.randint(1, 2))):
-            psc.associate_with_exception(exc.id)
-        if risks and rng.random() < 0.5:
-            exc.associate_with_risk(rng.choice(risks).id)
-        if state == "draft":
-            continue
-        exc.submit(requester)
-        if state == "submitted":
-            continue
-        # who may decide depends on the level (EXCEPTION_APPROVERS)
-        deciders = [u.id for u in exc.eligible_approvers()]
-        approver = approver if approver in deciders else (deciders[0] if deciders else approver)
-        if state == "rejected":
-            exc.reject(approver, "Describe the compensating controls in more detail.")
-            continue
-        exc.approve(approver, "Accepted until the replacement is in place.")
-        if state == "expired":
-            # pretend it was approved a while ago and nobody renewed it
-            exc.valid_from = today - timedelta(days=200)
-            exc.expiry_date = today - timedelta(days=rng.randint(5, 40))
-            exc._skip_history = True
-            db.session.commit()
-        elif state == "closed":
-            exc.close("Fixed - the system was replaced.")
-    return created
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -601,12 +726,10 @@ def main():
             )
             total_risks += 1
 
+        backdate_risks(tenant)
+
         # exceptions, with their own random generator so the data above stays the same
-        erng = random.Random(args.seed + 1)
-        total_exceptions = 0
-        for project in tenant.projects.order_by(Project.date_added).all():
-            total_exceptions += add_demo_exceptions(erng, project, today)
-        total_exceptions += add_org_exceptions(random.Random(args.seed + 2), tenant, users, today)
+        total_exceptions = add_demo_exceptions(tenant, today)
 
         log("")
         log(
