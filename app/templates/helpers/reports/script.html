@@ -4,13 +4,32 @@
  * (like the Executive / Technical reports) and as CSV for Excel.
  * Merged into project() with {...reportsMixin(), ...}; uses this.projectData,
  * this.projectUsers, this.risks, this.exceptions and this.excStateLabels.
+ * The organisation Reports page (org_reports.html) reuses it over several
+ * projects: it sets rptMultiProject and overrides rptScope / rptSubtitle / rptEmail.
  *
  * CSV: semicolon separated with a UTF-8 BOM, so Excel with Swedish (and most
  * European) settings opens it in columns with the right characters.
  */
+// the logo for the PDF header, as a data URL
+async function rptLogo() {
+	const img = await new Promise((resolve, reject) => {
+		const i = new Image()
+		i.crossOrigin = "Anonymous"
+		i.onload = () => resolve(i)
+		i.onerror = reject
+		i.src = "/static/img/icon.png"
+	})
+	const canvas = document.createElement("canvas")
+	canvas.width = img.width
+	canvas.height = img.height
+	canvas.getContext("2d").drawImage(img, 0, 0)
+	return canvas.toDataURL("image/png")
+}
+
 function reportsMixin() {
 	return {
 		reportBusy: false,
+		rptMultiProject: false,  // several projects in one report: show the project per row
 		rptColor: [54, 69, 79],
 		rptLevelColors: {
 			"very high": [185, 28, 28], "high": [220, 38, 38], "low": [202, 138, 4],
@@ -23,8 +42,7 @@ function reportsMixin() {
 			const doc = new jsPDF({orientation: landscape ? "landscape" : "portrait"})
 			const pageWidth = doc.internal.pageSize.getWidth()
 			try {
-				const img = await loadImage("/static/img/icon.png")
-				doc.addImage(await imageToBase64(img), "PNG", 15, 12, 10, 10)
+				doc.addImage(await rptLogo(), "PNG", 15, 12, 10, 10)
 			} catch (e) { /* the logo is optional */ }
 			doc.setTextColor(...this.rptColor)
 			doc.setFont("helvetica", "bold")
@@ -117,7 +135,7 @@ function reportsMixin() {
 				doc.setFont("helvetica", "normal")
 				doc.setFontSize(7.5)
 				doc.setTextColor(140)
-				doc.text(ctx.title + " - " + (this.projectData.name || "") + " - " + stamp, 15, height - 8)
+				doc.text(ctx.title + " - " + this.rptScope() + " - " + stamp, 15, height - 8)
 				doc.text("Page " + i + " of " + pages, width - 15, height - 8, {align: "right"})
 			}
 			doc.save(filename)
@@ -142,8 +160,12 @@ function reportsMixin() {
 			const pad = n => String(n).padStart(2, "0")
 			return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
 		},
+		// what the report covers: the project (the Reports page: the organisation)
+		rptScope() {
+			return (this.projectData || {}).name || ""
+		},
 		rptFileName(kind, ext) {
-			const name = (this.projectData.name || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+			const name = (this.rptScope() || "project").toLowerCase().replace(/[^a-z0-9]+/g, "-")
 			return `${kind}-${name}-${this.rptToday()}.${ext}`
 		},
 		rptSubtitle() {
@@ -243,13 +265,15 @@ function reportsMixin() {
 				const risks = [...(this.risks || [])].sort((a, b) =>
 					(["mitigated", "accepted"].includes(a.status) - ["mitigated", "accepted"].includes(b.status)) || (order(a) - order(b)))
 				const assess = r => (r.likelihood && r.impact) ? `${r.likelihood} x ${r.impact} = ${r.likelihood * r.impact}` : ""
-				const controls = r => (r.links || []).map(l => l.ref_code).join(", ")
+				const multi = this.rptMultiProject
+				const controls = r => (r.links || []).map(l => (multi && l.project !== r.project ? l.project + ": " : "") + l.ref_code).join(", ")
 				const excs = r => (r.exceptions || []).map(e => `${e.title} [${e.state}]`).join("\n")
+				const where = r => multi ? "\n" + (r.project || "Organisation level") : ""
 				if (format === "csv") {
 					this.rptCsv(this.rptFileName("risk-register", "csv"),
-						["Title", "Level", "Likelihood", "Impact", "Score", "Status", "Priority", "Owner", "Next review",
+						[...(multi ? ["Project"] : []), "Title", "Level", "Likelihood", "Impact", "Score", "Status", "Priority", "Owner", "Next review",
 						 "Review overdue", "Due date", "Ticket", "Description", "Remediation", "Controls", "Exceptions"],
-						risks.map(r => [r.title, r.risk, r.likelihood, r.impact, r.score, r.status, r.priority, this.rptEmail(r.assignee),
+						risks.map(r => [...(multi ? [r.project || "Organisation"] : []), r.title, r.risk, r.likelihood, r.impact, r.score, r.status, r.priority, this.rptEmail(r.assignee),
 							r.review_date, r.review_overdue ? "yes" : "", r.due_date, r.ticket_number, r.description,
 							r.remediation, controls(r), excs(r)]))
 					return
@@ -263,11 +287,12 @@ function reportsMixin() {
 					["Accepted", risks.filter(r => r.status === "accepted").length],
 				])
 				this.rptHeading(ctx, "Risks",
+					(multi ? "Risks of the selected projects and of the organisation. " : "") +
 					"Open risks first, highest level first. Level = likelihood x impact on the 4x4 scale " +
 					"(1-2 very low, 3-6 low, 8-9 high, 12-16 very high).")
 				this.rptTable(ctx,
 					["Risk", "Level", "L x I", "Status", "Owner", "Next review", "Treatment", "Controls / exceptions"],
-					risks.map(r => [r.title + (r.description ? "\n" + r.description : ""), r.risk, assess(r), r.status.replace("_", " "),
+					risks.map(r => [r.title + where(r) + (r.description ? "\n" + r.description : ""), r.risk, assess(r), r.status.replace("_", " "),
 						this.rptEmail(r.assignee).split("@")[0], (r.review_date || "") + (r.review_overdue ? " (overdue)" : ""),
 						r.remediation || "", [controls(r), excs(r)].filter(Boolean).join("\n")]),
 					{
@@ -301,7 +326,7 @@ function reportsMixin() {
 						["Title", "Scope", "State", "Level", "Likelihood", "Impact", "Owner", "Requested by", "Submitted",
 						 "Decided by", "Decided", "Decision note", "Valid from", "Expiry date", "Days left", "Description",
 						 "Justification", "Compensating controls", "Affected assets", "Controls", "Risks", "Ticket"],
-						items.map(e => [e.title, e.project_id ? "Project" : "Organisation", label(e.state), e.risk, e.likelihood,
+						items.map(e => [e.title, e.project_id ? (this.rptMultiProject ? e.project : "Project") : "Organisation", label(e.state), e.risk, e.likelihood,
 							e.impact, e.assignee_email, e.requested_by_email, e.submitted_date, e.decided_by_email, e.decided_date,
 							e.decision_note, e.valid_from, e.expiry_date, e.days_left, e.description, e.justification,
 							e.compensating_controls, e.affected_assets, controls(e), (e.risks || []).map(r => r.title).join(", "),
@@ -318,11 +343,12 @@ function reportsMixin() {
 					["Closed", s.by_state.closed || 0],
 				])
 				this.rptHeading(ctx, "Exceptions",
-					"Approved, time limited deviations from controls and policies that apply to this project, with the decision " +
+					"Approved, time limited deviations from controls and policies that apply to " +
+					(this.rptMultiProject ? "the selected projects" : "this project") + ", with the decision " +
 					"trail. Expired exceptions are listed first: they are neither renewed nor closed.")
 				this.rptTable(ctx,
 					["Exception", "State", "Level", "Valid", "Owner", "Decision", "Justification / compensating controls", "Controls"],
-					items.map(e => [e.title + (e.project_id ? "" : "\n(organisation level)") + (e.affected_assets ? "\nAssets: " + e.affected_assets : ""),
+					items.map(e => [e.title + (e.project_id ? (this.rptMultiProject ? "\n" + e.project : "") : "\n(organisation level)") + (e.affected_assets ? "\nAssets: " + e.affected_assets : ""),
 						label(e.state), e.risk, `${e.valid_from || "from approval"}\n- ${e.expiry_date || "?"}`,
 						(e.assignee_email || "").split("@")[0], decision(e),
 						[e.justification, e.compensating_controls ? "Compensating: " + e.compensating_controls : ""].filter(Boolean).join("\n"),

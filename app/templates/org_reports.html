@@ -1,0 +1,466 @@
+{% extends "layouts/sidebar-nav.html" %}
+
+{%block page_header_title%}Reports{%endblock%}
+{%block page_header_title_border%}{%endblock%}
+{%block page_header_buttons%}{%endblock%}
+{%block tenant_btn%}{%endblock%}
+
+{%block before_head%}
+{{ super() }}
+{% import "helpers/src_macros.html" as macro %}
+{{ macro.filehelper(report=True) }}
+{%endblock%}
+
+{%block content%}
+<div x-data="orgReports()" x-cloak class="grid grid-cols-6 gap-4 mt-2">
+	<div class="col-span-6">
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<div class="flex justify-between items-center">
+					<div>
+						<h2 class="card-title">Reports across projects</h2>
+						<p class="text-sm opacity-70">Gaps, risks and exceptions for the projects you select, as PDF or CSV. Only projects you can open are listed.</p>
+					</div>
+					<button class="btn btn-sm capitalize tooltip" @click="load" data-tip="Refresh"><i class="ti ti-refresh"></i></button>
+				</div>
+
+				<div class="flex flex-row flex-wrap gap-4 mt-4 items-end">
+					<div class="form-control relative" x-data="{pickerOpen: false}" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
+						<span class="label-text text-xs mb-1">Projects</span>
+						<button type="button" @click="pickerOpen = !pickerOpen" class="btn btn-sm btn-outline border-base-300 font-normal min-w-48 justify-between">
+							<span x-text="projectSummary()"></span>
+							<i class="ti" :class="pickerOpen ? 'ti-chevron-up' : 'ti-chevron-down'"></i>
+						</button>
+						<div x-show="pickerOpen" x-cloak style="position:absolute; top:100%; left:0; margin-top:4px; z-index:1000; width:18rem;" class="bg-base-100 rounded-box p-3 shadow-xl border border-base-300">
+							<div class="flex justify-between mb-2 text-xs">
+								<button type="button" class="underline" @click="selectAllProjects()">Select all</button>
+								<button type="button" class="underline" @click="selectNoProjects()">Clear</button>
+							</div>
+							<div style="max-height:16rem; overflow-y:auto;" class="space-y-1">
+								<template x-for="project in projectList" :key="project.id">
+									<label class="flex items-center gap-2 cursor-pointer text-sm">
+										<input type="checkbox" class="checkbox checkbox-xs" :checked="isSelected(project.id)" @change="toggleProject(project.id)" />
+										<span x-text="project.name"></span>
+									</label>
+								</template>
+							</div>
+						</div>
+					</div>
+					<label class="flex items-center gap-2 cursor-pointer text-sm mb-1">
+						<input type="checkbox" class="toggle toggle-sm" x-model="includeOrg" @change="saveSelection(); load()" />
+						<span>Include organisation level risks and exceptions</span>
+					</label>
+				</div>
+
+				<div class="mx-auto text-center mt-5" x-show="loading"><span class="loading loading-dots loading-lg"></span></div>
+
+				<div x-show="!loading && !projects.length" class="text-center py-12 opacity-70">
+					<i class="ti ti-folder-off text-4xl"></i>
+					<p class="mt-2" x-text="projectList.length ? 'Select at least one project.' : 'You have no projects in this organisation.'"></p>
+				</div>
+
+				<div x-show="!loading && projects.length" class="overflow-x-auto mt-4">
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th class="bg-base-200">Project</th>
+								<th class="bg-base-200">Frameworks</th>
+								<th class="bg-base-200 text-center">Implemented</th>
+								<th class="bg-base-200 text-center">Evidence</th>
+								<th class="bg-base-200 text-center">Gaps</th>
+								<th class="bg-base-200 text-center" title="Sub-controls marked not applicable without a justification">N/A without reason</th>
+								<th class="bg-base-200" x-show="hasRisks">Open risks</th>
+								<th class="bg-base-200">Exceptions</th>
+							</tr>
+						</thead>
+						<tbody>
+							<template x-for="p in projects" :key="p.id">
+								<tr class="hover">
+									<td><a :href="'/projects/' + p.id + '?tab=summary'" class="link link-hover font-medium" x-text="p.name"></a></td>
+									<td class="text-xs" x-text="p.frameworks.map(f => fwLabel(f)).join(', ')"></td>
+									<td class="text-center" x-text="p.implemented_pct + '%'"></td>
+									<td class="text-center" x-text="p.evidence_pct + '%'"></td>
+									<td class="text-center" x-text="p.gaps"></td>
+									<td class="text-center"><span :class="{'text-error font-semibold': p.without_justification}" x-text="p.without_justification"></span></td>
+									<td x-show="hasRisks">
+										<div class="flex flex-wrap gap-1">
+											<template x-for="level in levelsOf(p.open_risks)" :key="level[0]">
+												<span :class="levelClass(level[0])" class="badge badge-sm border-0 whitespace-nowrap" x-text="level[1] + ' ' + level[0]"></span>
+											</template>
+											<span x-show="!levelsOf(p.open_risks).length" class="text-xs opacity-50">-</span>
+											<span x-show="p.review_overdue" class="badge badge-sm badge-outline badge-error whitespace-nowrap" x-text="p.review_overdue + ' review overdue'"></span>
+										</div>
+									</td>
+									<td>
+										<div class="flex flex-wrap gap-1 text-xs">
+											<span x-show="p.exceptions.active" class="badge badge-sm bg-success text-white border-0 whitespace-nowrap" x-text="p.exceptions.active + ' active'"></span>
+											<span x-show="p.exceptions.submitted" class="badge badge-sm bg-warning text-white border-0 whitespace-nowrap" x-text="p.exceptions.submitted + ' awaiting'"></span>
+											<span x-show="p.exceptions.expired" class="badge badge-sm bg-error text-white border-0 whitespace-nowrap" x-text="p.exceptions.expired + ' expired'"></span>
+											<span x-show="!p.exceptions.active && !p.exceptions.submitted && !p.exceptions.expired" class="opacity-50">-</span>
+										</div>
+									</td>
+								</tr>
+							</template>
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="col-span-6 grid grid-cols-4 gap-4" x-show="!loading && projects.length">
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<h3 class="card-title text-base"><i class="ti ti-list-check"></i>Gaps</h3>
+				<p class="text-sm opacity-70">A summary per project (implemented, evidence, open risks and exceptions), sub-controls marked not applicable without a justification, and the sub-controls that are not done, grouped by project.</p>
+				<label class="form-control mt-2">
+					<span class="label-text text-xs mb-1">Sub-controls to list</span>
+					<select x-model="gapFilter" class="select select-sm select-bordered">
+						<option value="not_implemented">Not implemented</option>
+						<option value="all">Not complete (not fully implemented or no evidence)</option>
+						<option value="missing_evidence">Missing evidence</option>
+						<option value="none">None - only the summary</option>
+					</select>
+				</label>
+				<p class="text-xs opacity-60" x-text="filteredGaps().length + ' sub-controls'"></p>
+				<div class="card-actions mt-2">
+					<button :disabled="reportBusy" @click="gapsReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
+					<button :disabled="reportBusy" @click="gapsReport('csv')" class="btn btn-sm">CSV (Excel)</button>
+				</div>
+			</div>
+		</div>
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<h3 class="card-title text-base"><i class="ti ti-chart-bar"></i>Common Gaps</h3>
+				<p class="text-sm opacity-70">The same sub-control over the selected projects, grouped: the gaps found in most projects come first, with the status in each project.</p>
+				<label class="form-control mt-2">
+					<span class="label-text text-xs mb-1">Sub-control status</span>
+					<select x-model="commonStatus" class="select select-sm select-bordered">
+						<option value="not_complete">Not complete (not fully implemented or no evidence)</option>
+						<option value="not_implemented">Not implemented</option>
+						<option value="missing_evidence">Missing evidence</option>
+					</select>
+				</label>
+				<label class="form-control">
+					<span class="label-text text-xs mb-1">Found in</span>
+					<select x-model.number="commonMin" class="select select-sm select-bordered">
+						<option value="1">Any number of projects</option>
+						<option value="2">At least 2 projects</option>
+						<option value="3">At least 3 projects</option>
+						<option value="5">At least 5 projects</option>
+					</select>
+				</label>
+				<div class="card-actions mt-2">
+					<button :disabled="reportBusy" @click="commonGapsReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
+					<button :disabled="reportBusy" @click="commonGapsReport('csv')" class="btn btn-sm">CSV (Excel)</button>
+				</div>
+			</div>
+		</div>
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<h3 class="card-title text-base"><i class="ti ti-alert-triangle"></i>Risk Register</h3>
+				<p class="text-sm opacity-70">The risks of the selected projects (and of the organisation), open and highest level first, with assessment, status, owner, review dates, treatment and linked controls and exceptions.</p>
+				<p class="text-xs opacity-60" x-show="hasRisks" x-text="risks.length + ' risks'"></p>
+				<p class="text-xs text-warning" x-show="!hasRisks">You do not have access to the risk register.</p>
+				<div class="card-actions mt-auto">
+					<button :disabled="reportBusy || !hasRisks || !risks.length" @click="riskRegisterReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
+					<button :disabled="reportBusy || !hasRisks || !risks.length" @click="riskRegisterReport('csv')" class="btn btn-sm">CSV (Excel)</button>
+				</div>
+			</div>
+		</div>
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<h3 class="card-title text-base"><i class="ti ti-shield-half"></i>Exception Register</h3>
+				<p class="text-sm opacity-70">The exceptions of the selected projects and the organisation level exceptions that apply to them, with state, level, validity, justification and the decision trail. Expired exceptions first.</p>
+				<p class="text-xs opacity-60" x-text="exceptions.length + ' exceptions'"></p>
+				<div class="card-actions mt-auto">
+					<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('pdf')" class="btn btn-sm btn-primary">PDF</button>
+					<button :disabled="reportBusy || !exceptions.length" @click="exceptionRegisterReport('csv')" class="btn btn-sm">CSV (Excel)</button>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+{%endblock%}
+
+{%block extrajs%}
+{% include "helpers/reports/script.html" %}
+<script>
+function orgReports() {
+	return {
+		...reportsMixin(),
+		rptMultiProject: true,
+		loading: true,
+		projectList: [],
+		excluded: [],
+		includeOrg: true,
+		gapFilter: "not_implemented",
+		commonStatus: "not_complete",
+		commonMin: 2,
+		projects: [],
+		gaps: [],
+		withoutJustification: [],
+		risks: [],
+		hasRisks: false,
+		exceptions: [],
+		excSummary: null,
+		excStateLabels: {
+			draft: "Draft", submitted: "Awaiting approval", rejected: "Rejected",
+			active: "Active", expired: "Expired", closed: "Closed"
+		},
+		tenantName: "",
+		levels: ["very high", "high", "low", "very low", "unknown"],
+
+		init() {
+			this.loadSelection()
+			this.load()
+		},
+		tenantId() {
+			return this.$store.currentUser.selectedTenant.id
+		},
+
+		// -- project selection (remembered per organisation) ------------------------
+		storageKey() {
+			return "org-reports-" + this.tenantId()
+		},
+		loadSelection() {
+			try {
+				const saved = JSON.parse(localStorage.getItem(this.storageKey()) || "{}")
+				this.excluded = saved.excluded || []
+				this.includeOrg = saved.includeOrg !== false
+			} catch (e) { this.excluded = [] }
+		},
+		saveSelection() {
+			try {
+				localStorage.setItem(this.storageKey(), JSON.stringify({excluded: this.excluded, includeOrg: this.includeOrg}))
+			} catch (e) { /* storage is optional */ }
+		},
+		isSelected(id) {
+			return !this.excluded.includes(id)
+		},
+		selectedIds() {
+			return this.projectList.filter(p => !this.excluded.includes(p.id)).map(p => p.id)
+		},
+		projectSummary() {
+			const n = this.selectedIds().length
+			if (!this.projectList.length) return "No projects"
+			if (n === this.projectList.length) return "All projects (" + n + ")"
+			if (n === 0) return "No projects"
+			return n + " of " + this.projectList.length + " projects"
+		},
+		toggleProject(id) {
+			this.excluded = this.excluded.includes(id) ? this.excluded.filter(x => x !== id) : [...this.excluded, id]
+			this.saveSelection()
+			this.load()
+		},
+		selectAllProjects() {
+			this.excluded = []
+			this.saveSelection()
+			this.load()
+		},
+		selectNoProjects() {
+			this.excluded = this.projectList.map(p => p.id)
+			this.saveSelection()
+			this.load()
+		},
+
+		load() {
+			this.loading = true
+			const params = new URLSearchParams()
+			const ids = this.selectedIds()
+			if (this.projectList.length && ids.length === 0) {
+				this.projects = []; this.gaps = []; this.risks = []; this.exceptions = []
+				this.loading = false
+				return
+			}
+			if (this.projectList.length && ids.length < this.projectList.length) params.set("projects", ids.join(","))
+			params.set("org", this.includeOrg ? "1" : "0")
+			request("GET", `/api/v1/tenants/${this.tenantId()}/reports/overview?${params.toString()}`,
+				data => {
+					this.projectList = data.project_list
+					// a project that is gone or new is simply (de)selected
+					this.excluded = this.excluded.filter(id => data.project_list.some(p => p.id === id))
+					this.tenantName = data.tenant
+					this.projects = data.projects
+					this.gaps = data.gaps
+					this.withoutJustification = data.without_justification
+					this.hasRisks = data.risks !== null
+					this.risks = data.risks || []
+					this.exceptions = data.exceptions
+					this.excSummary = data.exception_summary
+					this.loading = false
+				},
+				error => {
+					this.loading = false
+					toast(error.message || "Could not load the reports", "error")
+				})
+		},
+
+		// -- helpers for the table and the mixin ----------------------------------------
+		fwLabel(name) {
+			const known = {"soc2": "SOC 2", "iso_27001_2022": "ISO 27001:2022", "nist_csf_v2.0": "NIST CSF 2.0",
+				"nist_800_53_v5": "NIST 800-53 r5", "cisv8": "CIS v8", "cmmc_v2": "CMMC 2.0", "hipaa_v2": "HIPAA",
+				"pci_3.1": "PCI DSS 3.1", "asvs_v4.0.1": "ASVS 4.0.1", "custom": "Custom"}
+			return known[String(name).toLowerCase()] || name
+		},
+		levelsOf(counts) {
+			if (!counts) return []
+			return this.levels.filter(l => counts[l]).map(l => [l, counts[l]])
+		},
+		levelClass(level) {
+			return {"very high": "bg-error text-white", "high": "bg-error text-white", "low": "bg-warning text-white",
+				"very low": "bg-success text-white"}[level] || "badge-ghost"
+		},
+		rptScope() {
+			return this.tenantName || "Organisation"
+		},
+		rptSubtitle(withOrg = true) {
+			const n = this.projects.length
+			return this.rptScope() + "  |  " + (n === this.projectList.length ? "All projects" : n + " of " + this.projectList.length + " projects") +
+				" (" + n + ")" + (withOrg && this.includeOrg ? " + organisation level" : "") + "  |  " + this.rptToday()
+		},
+		rptEmail(id) {
+			const r = this.risks.find(x => x.assignee === id)
+			return r && r.assignee_email ? r.assignee_email : ""
+		},
+		filteredGaps() {
+			if (this.gapFilter === "none") return []
+			if (this.gapFilter === "not_implemented") return this.gaps.filter(g => !g.implemented)
+			if (this.gapFilter === "missing_evidence") return this.gaps.filter(g => !g.evidence)
+			return this.gaps
+		},
+
+		// -- Common gaps: the same sub-control over the projects (the Gaps page as a report)
+		commonGapsReport(format) {
+			this.rptRun(async () => {
+				const params = new URLSearchParams({status: this.commonStatus, min_projects: this.commonMin})
+				if (this.excluded.length) params.set("exclude", this.excluded.join(","))
+				const data = await new Promise((resolve, reject) => request("GET",
+					`/api/v1/tenants/${this.tenantId()}/gaps?${params.toString()}`,
+					d => resolve(d), e => reject(new Error(e.message || "request failed"))))
+				const groups = data.groups
+				const statusText = i => i.implementation.replace(/_/g, " ") + (i.implementation === "partially_implemented" ? ` (${i.implemented}%)` : "") +
+					(i.has_evidence ? "" : ", no evidence")
+				const titles = {not_complete: "not complete", not_implemented: "not implemented", missing_evidence: "missing evidence"}
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("common-gaps", "csv"),
+						["Framework", "Ref", "Sub-control", "Control", "Projects matching", "Projects with the sub-control", "Project",
+						 "Implementation", "Implemented %", "Evidence", "Owner", "Open risks", "Ticket"],
+						groups.flatMap(g => g.items.map(i => [g.framework, g.ref_code, g.name, `${g.control_ref_code} ${g.control}`,
+							g.gaps, g.projects, i.project, i.implementation.replace(/_/g, " "), i.implemented, i.has_evidence ? "yes" : "no",
+							i.owner, i.open_risks, i.ticket_number])))
+					return
+				}
+				const ctx = await this.rptStart("Common Gaps", this.rptSubtitle(false), true)
+				const t = data.totals
+				this.rptStats(ctx, [
+					["Projects", data.projects],
+					["Sub-controls listed", groups.length],
+					["In every project", groups.filter(g => g.gaps === data.projects).length],
+					["Not implemented", t.not_implemented, t.not_implemented ? [220, 38, 38] : null],
+					["Partially implemented", t.partially_implemented, [202, 138, 4]],
+					["Missing evidence", t.missing_evidence, t.missing_evidence ? [202, 138, 4] : null],
+				])
+				this.rptHeading(ctx, "Sub-controls " + titles[this.commonStatus] + (this.commonMin > 1 ? ` in at least ${this.commonMin} projects` : ""),
+					"The same sub-control in several projects is one row; the ones found in most projects come first. A gap shared by " +
+					"many projects is usually best solved once, centrally.")
+				this.rptTable(ctx, ["Sub-control", "Framework", "Projects", "Status per project"],
+					groups.map(g => {
+						const name = g.name.length > 150 ? g.name.slice(0, 147).trim() + "..." : g.name
+						return [`${g.ref_code} ${name}`, this.fwLabel(g.framework), `${g.gaps} of ${g.projects}`,
+							g.items.map(i => `${i.project}: ${statusText(i)}${i.open_risks ? ", " + i.open_risks + " open risk(s)" : ""}`).join("\n")]
+					}),
+					{columnStyles: {0: {cellWidth: 95}, 1: {cellWidth: 32}, 2: {cellWidth: 20, halign: "center"}, 3: {cellWidth: 120}}})
+				this.rptFinish(ctx, this.rptFileName("common-gaps", "pdf"))
+			})
+		},
+
+		// -- Gaps report ------------------------------------------------------------------
+		gapsReport(format) {
+			this.rptRun(async () => {
+				const gaps = this.filteredGaps()
+				const risksText = counts => this.levelsOf(counts).map(([l, n]) => `${n} ${l}`).join(", ")
+				const excText = e => [e.active ? e.active + " active" : "", e.submitted ? e.submitted + " awaiting" : "",
+					e.expired ? e.expired + " expired" : ""].filter(Boolean).join(", ")
+				if (format === "csv") {
+					this.rptCsv(this.rptFileName("gaps", "csv"),
+						["Project", "Framework", "Control", "Ref", "Sub-control", "Implementation", "Implemented %", "Evidence",
+						 "Owner", "Open risks", "Active exceptions", "Ticket"],
+						gaps.map(g => [g.project, g.framework, `${g.control_ref} ${g.control}`, g.ref, g.name, g.implementation,
+							g.implemented, g.evidence, g.owner, g.open_risks, g.exceptions.join(", "), g.ticket_number]))
+					return
+				}
+				const sum = key => this.projects.reduce((t, p) => t + (p[key] || 0), 0)
+				const applicable = sum("applicable")
+				const ctx = await this.rptStart("Gap Report", this.rptSubtitle(false), true)
+				this.rptStats(ctx, [
+					["Projects", this.projects.length],
+					["Applicable sub-controls", applicable],
+					["Fully implemented", sum("implemented"), [22, 163, 74]],
+					["Partially implemented", sum("partially_implemented"), [202, 138, 4]],
+					["Not implemented", sum("not_implemented"), sum("not_implemented") ? [220, 38, 38] : null],
+					["Not complete (gaps)", sum("gaps")],
+					["N/A without justification", sum("without_justification"), sum("without_justification") ? [220, 38, 38] : null],
+				])
+				this.rptHeading(ctx, "Projects",
+					"Implemented and evidence are computed like the project summary: averaged per control. Gaps are applicable " +
+					"sub-controls that are not fully implemented or have no evidence.")
+				this.rptTable(ctx,
+					["Project", "Frameworks", "Implemented", "Evidence", "Not impl. / partial", "Gaps", "N/A without justification",
+					 ...(this.hasRisks ? ["Open risks"] : []), "Exceptions"],
+					this.projects.map(p => [p.name, p.frameworks.map(f => this.fwLabel(f)).join(", "), p.implemented_pct + "%", p.evidence_pct + "%",
+						`${p.not_implemented} / ${p.partially_implemented}`, p.gaps, p.without_justification || "",
+						...(this.hasRisks ? [risksText(p.open_risks) + (p.review_overdue ? `\n${p.review_overdue} review overdue` : "")] : []),
+						excText(p.exceptions)]),
+					{
+						columnStyles: {0: {cellWidth: 45}, 1: {cellWidth: 42}, 2: {halign: "center"}, 3: {halign: "center"}, 4: {halign: "center"},
+							5: {halign: "center"}, 6: {halign: "center"}},
+						didParseCell: d => {
+							if (d.section === "body" && d.column.index === 6 && d.cell.raw) {
+								d.cell.styles.textColor = [220, 38, 38]; d.cell.styles.fontStyle = "bold"
+							}
+						},
+					})
+				if (this.withoutJustification.length) {
+					this.rptHeading(ctx, "Not applicable without a justification",
+						"An auditor asks why these are excluded; add the reason on the sub-control.")
+					this.rptTable(ctx, ["Project", "Framework", "Sub-control", "Owner"],
+						this.withoutJustification.map(r => [r.project, this.fwLabel(r.framework), `${r.ref} ${r.name}`, (r.owner || "").split("@")[0]]),
+						{columnStyles: {0: {cellWidth: 45}, 1: {cellWidth: 35}, 3: {cellWidth: 35}}})
+				}
+				if (gaps.length) {
+					const titles = {all: "Sub-controls that are not complete", not_implemented: "Sub-controls that are not implemented",
+						missing_evidence: "Sub-controls without evidence"}
+					this.rptHeading(ctx, titles[this.gapFilter] || "Gaps",
+						"Grouped by project. Open risks and active exceptions linked to the sub-control are shown: a gap with an " +
+						"approved exception is a known and accepted deviation.")
+					const body = []
+					let current = null
+					for (const g of gaps) {
+						if (g.project !== current) {
+							body.push([{content: g.project, colSpan: 7, styles: {fontStyle: "bold", fillColor: [241, 243, 245]}}])
+							current = g.project
+						}
+						const name = g.name.length > 150 ? g.name.slice(0, 147).trim() + "..." : g.name
+						body.push([`${g.ref} ${name}`, this.fwLabel(g.framework), `${g.implementation} (${g.implemented}%)`,
+							g.evidence || "none", (g.owner || "").split("@")[0], g.open_risks || "", g.exceptions.join("\n")])
+					}
+					this.rptTable(ctx, ["Sub-control", "Framework", "Implementation", "Evidence", "Owner", "Open risks", "Active exceptions"],
+						body,
+						{
+							columnStyles: {0: {cellWidth: 100}, 1: {cellWidth: 30}, 2: {cellWidth: 38}, 3: {cellWidth: 18, halign: "center"},
+								4: {cellWidth: 26}, 5: {cellWidth: 18, halign: "center"}, 6: {cellWidth: 37}},
+							didParseCell: d => {
+								if (d.section !== "body") return
+								if (d.column.index === 3 && d.cell.raw === "none") d.cell.styles.textColor = [220, 38, 38]
+								if (d.column.index === 2 && String(d.cell.raw).startsWith("not implemented")) d.cell.styles.textColor = [220, 38, 38]
+							},
+						})
+				}
+				this.rptFinish(ctx, this.rptFileName("gaps", "pdf"))
+			})
+		},
+	}
+}
+</script>
+{%endblock%}

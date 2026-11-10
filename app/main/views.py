@@ -36,6 +36,13 @@ def gaps():
     return render_template("gaps.html")
 
 
+@main.route("/reports", methods=["GET"])
+@login_required
+def org_reports():
+    """Gaps, risks and exceptions over the projects the user selects."""
+    return render_template("org_reports.html")
+
+
 @main.route("/violations", methods=["GET"])
 @login_required
 def violations():
