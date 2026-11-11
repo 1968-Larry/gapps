@@ -13,7 +13,7 @@
 				<div class="flex justify-between items-center">
 					<div>
 						<h2 class="card-title">Deadlines</h2>
-						<p class="text-sm opacity-70">Planned end dates of sub-controls in the projects you can open. Set the date on the sub-control (Planned End). Complete = fully implemented with evidence, same as in the project.</p>
+						<p class="text-sm opacity-70">Planned end dates of sub-controls, review and due dates of risks and expiry dates of exceptions, in the projects you can open. A sub-control is complete when it is fully implemented with evidence, same as in the project.</p>
 					</div>
 					<button class="btn btn-sm capitalize tooltip" @click="load" data-tip="Refresh"><i class="ti ti-refresh"></i></button>
 				</div>
@@ -75,6 +75,22 @@
 					</label>
 					<button type="button" class="btn btn-sm btn-ghost" x-show="(from || to) && status !== 'no_date'" @click="from = ''; to = ''; save()">Clear dates</button>
 
+					<div class="form-control">
+						<span class="label-text text-xs mb-1">Show</span>
+						<div class="flex flex-row gap-3 items-center h-8">
+							<label class="flex items-center gap-1 cursor-pointer text-sm"><input type="checkbox" class="checkbox checkbox-xs" x-model="showSubcontrols" @change="save()" />Sub-controls</label>
+							<label class="flex items-center gap-1 cursor-pointer text-sm" x-show="hasRiskModule"><input type="checkbox" class="checkbox checkbox-xs" x-model="showRisks" @change="save()" />Risks</label>
+							<label class="flex items-center gap-1 cursor-pointer text-sm"><input type="checkbox" class="checkbox checkbox-xs" x-model="showExceptions" @change="save()" />Exceptions</label>
+						</div>
+					</div>
+					<div class="form-control">
+						<span class="label-text text-xs mb-1">&nbsp;</span>
+						<div class="flex flex-row gap-3 items-center h-8">
+							<label class="flex items-center gap-1 cursor-pointer text-sm" title="Risks and exceptions that do not belong to a project"><input type="checkbox" class="toggle toggle-xs" x-model="includeOrg" @change="save()" />Organisation level</label>
+							<label class="flex items-center gap-1 cursor-pointer text-sm" x-show="hasRiskModule && showRisks" title="Review dates of accepted risks"><input type="checkbox" class="toggle toggle-xs" x-model="includeAccepted" @change="save()" />Accepted risks</label>
+						</div>
+					</div>
+
 					<div class="form-control ml-auto">
 						<span class="label-text text-xs mb-1">Group by</span>
 						<div class="join">
@@ -104,9 +120,9 @@
 						<thead>
 							<tr>
 								<th class="bg-base-200 w-28">Planned end</th>
-								<th class="bg-base-200">Sub-control</th>
+								<th class="bg-base-200">Item</th>
 								<th class="bg-base-200">Owner</th>
-								<th class="bg-base-200 text-center">Implemented</th>
+								<th class="bg-base-200 text-center">Implemented / level</th>
 								<th class="bg-base-200">Status</th>
 							</tr>
 						</thead>
@@ -117,28 +133,36 @@
 									<tr>
 										<td colspan="5" class="bg-base-300 font-semibold">
 											<span x-text="block.groupLabel"></span>
-											<span class="opacity-60 font-normal text-xs ml-2" x-text="block.groupCount + (block.groupCount === 1 ? ' sub-control' : ' sub-controls')"></span>
+											<span class="opacity-60 font-normal text-xs ml-2" x-text="block.groupCount + (block.groupCount === 1 ? ' item' : ' items')"></span>
 										</td>
 									</tr>
 								</template>
 								<tr>
 									<td colspan="5" class="bg-base-200 text-sm">
-										<span class="font-semibold" x-text="'[' + block.controlRef + '] ' + block.control"></span>
+										<span class="font-semibold" x-text="block.title"></span>
 										<span x-show="groupBy === 'month'" class="opacity-70 ml-2" x-text="block.project"></span>
-										<span class="opacity-60 text-xs ml-2" x-text="block.rows.length + (block.rows.length === 1 ? ' sub-control' : ' sub-controls')"></span>
+										<span class="opacity-60 text-xs ml-2" x-text="block.rows.length + ' ' + block.unit(block.rows.length)"></span>
 										<span x-show="block.overdue" class="badge badge-sm bg-error text-white border-0 ml-2" x-text="block.overdue + ' overdue'"></span>
 									</td>
 								</tr>
-								<template x-for="row in block.rows" :key="row.id">
+								<template x-for="row in block.rows" :key="row.kind + row.id">
 									<tr class="hover cursor-pointer" @click="window.location = link(row)">
 										<td class="whitespace-nowrap pl-6" :class="{'text-error font-semibold': row.status === 'overdue'}" x-text="row.planned_end || '-'"></td>
 										<td>
-											<a :href="link(row)" class="hover:underline" x-text="'[' + row.ref_code + '] ' + row.name"></a>
+											<span x-show="row.kind !== 'subcontrol'" class="badge badge-sm badge-outline mr-1 whitespace-nowrap" x-text="kindLabel(row)"></span>
+											<a :href="link(row)" class="hover:underline" x-text="row.kind === 'subcontrol' ? '[' + row.ref_code + '] ' + row.name : row.name"></a>
 										</td>
 										<td class="text-xs" x-text="row.owner || 'Missing owner'" :class="{'text-warning': !row.owner}"></td>
 										<td class="text-center whitespace-nowrap">
-											<span x-text="row.implemented + '%'"></span>
-											<i class="ti ml-1" :class="row.has_evidence ? 'ti-paperclip opacity-70' : 'ti-paperclip-off text-warning'" :title="row.has_evidence ? 'Has evidence' : 'No evidence'"></i>
+											<template x-if="row.kind === 'subcontrol'">
+												<span>
+													<span x-text="row.implemented + '%'"></span>
+													<i class="ti ml-1" :class="row.has_evidence ? 'ti-paperclip opacity-70' : 'ti-paperclip-off text-warning'" :title="row.has_evidence ? 'Has evidence' : 'No evidence'"></i>
+												</span>
+											</template>
+											<template x-if="row.kind !== 'subcontrol'">
+												<span class="text-xs capitalize" x-text="row.level || '-'"></span>
+											</template>
 										</td>
 										<td>
 											<span class="badge badge-sm border-0 whitespace-nowrap" :class="statusClass(row.status)" x-text="statusLabel(row)"></span>
@@ -169,6 +193,13 @@
 			from: "",
 			to: "",
 			groupBy: "month",
+			showSubcontrols: true,
+			showRisks: true,
+			showExceptions: true,
+			includeOrg: true,
+			includeAccepted: false,
+			hasRiskModule: false,
+			tenant: "",
 			months: ["January", "February", "March", "April", "May", "June", "July",
 				"August", "September", "October", "November", "December"],
 
@@ -185,7 +216,8 @@
 			restore() {
 				try {
 					const s = JSON.parse(localStorage.getItem(this.storageKey()) || "{}")
-					for (const k of ["owner", "excluded", "status", "from", "to", "groupBy"]) {
+					for (const k of ["owner", "excluded", "status", "from", "to", "groupBy", "showSubcontrols",
+						"showRisks", "showExceptions", "includeOrg", "includeAccepted"]) {
 						if (s[k] !== undefined) this[k] = s[k]
 					}
 				} catch (e) { /* storage is optional */ }
@@ -194,7 +226,10 @@
 				try {
 					localStorage.setItem(this.storageKey(), JSON.stringify({
 						owner: this.owner, excluded: this.excluded, status: this.status,
-						from: this.from, to: this.to, groupBy: this.groupBy
+						from: this.from, to: this.to, groupBy: this.groupBy,
+						showSubcontrols: this.showSubcontrols, showRisks: this.showRisks,
+						showExceptions: this.showExceptions, includeOrg: this.includeOrg,
+						includeAccepted: this.includeAccepted
 					}))
 				} catch (e) { /* storage is optional */ }
 			},
@@ -204,12 +239,8 @@
 				const params = new URLSearchParams()
 				params.set("owner", this.owner)
 				const ids = this.projectList.filter(p => !this.excluded.includes(p.id)).map(p => p.id)
-				if (this.projectList.length && ids.length === 0) {
-					this.rows = []
-					this.loading = false
-					return
-				}
-				if (this.projectList.length && ids.length < this.projectList.length) params.set("projects", ids.join(","))
+				// none selected: still load (organisation level items), the page filters per project
+				if (this.projectList.length && ids.length && ids.length < this.projectList.length) params.set("projects", ids.join(","))
 				request("GET", `/api/v1/tenants/${this.tenantId()}/deadlines?${params.toString()}`,
 					data => {
 						this.projectList = data.projects
@@ -223,6 +254,8 @@
 							return this.load()
 						}
 						this.rows = data.rows
+						this.tenant = data.tenant_id
+						this.hasRiskModule = data.risk_module
 						this.loading = false
 					},
 					error => {
@@ -246,7 +279,13 @@
 
 			// rows of the selected projects (the server may have sent all of them on the first load)
 			visibleRows() {
-				return this.rows.filter(r => !this.excluded.includes(r.project_id))
+				return this.rows.filter(r => {
+					if (r.project_id ? this.excluded.includes(r.project_id) : !this.includeOrg) return false
+					if (r.kind === "subcontrol") return this.showSubcontrols
+					if (r.kind === "exception") return this.showExceptions
+					if (!this.hasRiskModule || !this.showRisks) return false
+					return !r.accepted || this.includeAccepted
+				})
 			},
 			count(status) {
 				return this.visibleRows().filter(r => r.status === status).length
@@ -272,7 +311,7 @@
 				for (const row of this.filtered()) {
 					let key, label
 					if (this.groupBy === "project") {
-						key = row.project_id
+						key = row.project_id || "org"
 						label = row.project
 					} else if (row.planned_end) {
 						key = row.planned_end.slice(0, 7)
@@ -287,7 +326,8 @@
 					}
 					byKey[key].rows.push(row)
 				}
-				if (this.groupBy === "project") out.sort((a, b) => a.label.localeCompare(b.label))
+				if (this.groupBy === "project") out.sort((a, b) =>
+					(a.key === "org") - (b.key === "org") || a.label.localeCompare(b.label))
 				return out
 			},
 			// groups() split per control (per project, a control can be in several projects):
@@ -299,10 +339,16 @@
 					const controls = []
 					const byKey = {}
 					for (const row of group.rows) {
-						const key = row.project_id + "|" + row.project_control_id
+						const kind = row.kind === "subcontrol" ? row.project_control_id : (row.kind === "exception" ? "exceptions" : "risks")
+						const key = (row.project_id || "org") + "|" + kind
 						if (!byKey[key]) {
 							byKey[key] = {
-								key: group.key + "|" + key, control: row.control, controlRef: row.control_ref_code,
+								key: group.key + "|" + key,
+								kind: row.kind === "subcontrol" ? "control" : kind,
+								title: row.kind === "subcontrol" ? "[" + row.control_ref_code + "] " + row.control : (kind === "risks" ? "Risks" : "Exceptions"),
+								rank: row.kind === "subcontrol" ? 0 : (kind === "risks" ? 1 : 2),
+								sortKey: row.kind === "subcontrol" ? (row.control_ref_code || "") : "",
+								unit: n => kind === "risks" ? (n === 1 ? "date" : "dates") : (kind === "exceptions" ? (n === 1 ? "exception" : "exceptions") : (n === 1 ? "sub-control" : "sub-controls")),
 								project: row.project, overdue: 0, rows: []
 							}
 							controls.push(byKey[key])
@@ -313,7 +359,7 @@
 					// rows are sorted by date, so a control's position follows its first date;
 					// in the project view sort the controls by reference code instead
 					if (this.groupBy === "project") {
-						controls.sort((a, b) => (a.controlRef || "").localeCompare(b.controlRef || "", undefined, {numeric: true}))
+						controls.sort((a, b) => a.rank - b.rank || a.sortKey.localeCompare(b.sortKey, undefined, {numeric: true}))
 					}
 					controls.forEach((c, i) => {
 						c.groupLabel = i === 0 ? group.label : null
@@ -324,8 +370,21 @@
 				return out
 			},
 			link(row) {
-				const q = new URLSearchParams({tab: "controls", "control-id": row.project_control_id, "subcontrol-id": row.id})
-				return `/projects/${row.project_id}?${q.toString()}`
+				if (row.kind === "subcontrol") {
+					const q = new URLSearchParams({tab: "controls", "control-id": row.project_control_id, "subcontrol-id": row.id})
+					return `/projects/${row.project_id}?${q.toString()}`
+				}
+				if (row.kind === "exception") {
+					return row.project_id
+						? `/projects/${row.project_id}?` + new URLSearchParams({tab: "exceptions", "exception-id": row.id})
+						: `/tenants/${this.tenant}/exceptions?` + new URLSearchParams({"exception-id": row.id})
+				}
+				return row.project_id
+					? `/projects/${row.project_id}?` + new URLSearchParams({tab: "risk register", "risk-id": row.id})
+					: `/tenants/${this.tenant}/risk?` + new URLSearchParams({"risk-id": row.id})
+			},
+			kindLabel(row) {
+				return {risk_review: row.accepted ? "Risk review (accepted)" : "Risk review", risk_due: "Risk due", exception: "Exception"}[row.kind]
 			},
 			statusClass(status) {
 				return {
@@ -336,13 +395,17 @@
 				}[status]
 			},
 			statusLabel(row) {
+				const plural = n => n === 1 ? "1 day" : `${n} days`
 				if (row.status === "overdue") {
 					const days = Math.round((new Date(this.today) - new Date(row.planned_end)) / 86400000)
-					return days === 1 ? "Overdue 1 day" : `Overdue ${days} days`
+					if (row.kind === "exception") return `Expired ${plural(days)} ago`
+					if (row.kind === "risk_review") return `Review overdue ${plural(days)}`
+					return `Overdue ${plural(days)}`
 				}
 				if (row.status === "upcoming") {
 					const days = Math.round((new Date(row.planned_end) - new Date(this.today)) / 86400000)
-					return days === 0 ? "Due today" : (days === 1 ? "In 1 day" : `In ${days} days`)
+					if (row.kind === "exception") return days === 0 ? "Expires today" : `Expires in ${plural(days)}`
+					return days === 0 ? "Due today" : `In ${plural(days)}`
 				}
 				return {done: "Complete", no_date: "No date"}[row.status]
 			},
@@ -350,8 +413,8 @@
 				if (!this.projectList.length) return "You have no projects in this organisation."
 				if (this.projectList.length === this.excluded.length) return "Select at least one project."
 				if (!this.visibleRows().length) return this.owner === "me"
-					? "You are not the owner of any applicable sub-control in these projects."
-					: "No applicable sub-controls for this owner."
+					? "Nothing in these projects has you as owner."
+					: "Nothing for this owner in these projects."
 				return "Nothing matches the filters."
 			},
 		}

@@ -1,17 +1,25 @@
 """
-Deadlines page: sub-controls with a planned end date, over the projects the
-user can open.
+Deadlines page: dates to keep over the projects the user can open.
 
     GET /api/v1/tenants/<tid>/deadlines?projects=&owner=
 
-Status per row (same "complete" as the project view: fully implemented AND
-has evidence):
+Row kinds:
+    subcontrol    planned end of an applicable sub-control
+    risk_review   next review date of a risk (open risks; accepted risks are
+                  sent with accepted=true, the page shows them on request)
+    risk_due      due date of an open risk (not mitigated / accepted)
+    exception     expiry date of an approved exception (active or expired)
+Risks need access to the risk module. Risks and exceptions without a project
+(organisation level) have project_id null. Same rules as the reminder mails.
+
+Status per sub-control row (same "complete" as the project view: fully
+implemented AND has evidence):
     done      complete
     overdue   not complete and planned end before today
     upcoming  not complete and planned end today or later
     no_date   no planned end set
-Only applicable sub-controls are returned. Status and date filtering is done
-in the browser.
+Risk and exception rows are overdue (date passed, exception expired) or
+upcoming. Status, type and date filtering is done in the browser.
 """
 from datetime import datetime
 
@@ -105,6 +113,7 @@ def get_deadlines_for_tenant(tid):
                 status = "upcoming"
             rows.append(
                 {
+                    "kind": "subcontrol",
                     "id": sid,
                     "project_id": pid,
                     "project": accessible[pid].name,
@@ -122,8 +131,86 @@ def get_deadlines_for_tenant(tid):
                 }
             )
 
+    today = datetime.utcnow().date()
+    owner_filter = None if owner == "all" else owner
+    in_scope = lambda project_id: (project_id in selected) if project_id else True  # noqa: E731
+
+    def person(user_id):
+        if user_id and user_id not in owners:
+            user = models.User.query.get(user_id)
+            owners[user_id] = user.email if user else None
+        return owners.get(user_id) if user_id else None
+
+    def project_name(project_id):
+        return accessible[project_id].name if project_id else "Organisation"
+
+    # -- risks (only with access to the risk module)
+    if authorizer._can_user_access_risk_module(tenant):
+        R = models.RiskRegister
+        query = (
+            R.query.filter(R.tenant_id == tenant.id)
+            .filter(R.enabled.isnot(False))
+            .filter(R.status != "mitigated")
+            .filter((R.review_date.isnot(None)) | (R.due_date.isnot(None)))
+        )
+        if owner_filter:
+            query = query.filter(R.assignee == owner_filter)
+        for risk in query.all():
+            if not in_scope(risk.project_id):
+                continue
+            accepted = risk.status == "accepted"
+            dates = [("risk_review", risk.review_date)]
+            if not accepted:
+                dates.append(("risk_due", risk.due_date))
+            for kind, when in dates:
+                if not when:
+                    continue
+                rows.append(
+                    {
+                        "kind": kind,
+                        "id": risk.id,
+                        "project_id": risk.project_id,
+                        "project": project_name(risk.project_id),
+                        "name": risk.title,
+                        "level": risk.risk,
+                        "risk_status": risk.status,
+                        "accepted": accepted,
+                        "owner_id": risk.assignee,
+                        "owner": person(risk.assignee),
+                        "planned_end": when.isoformat(),
+                        "status": "overdue" if when < today else "upcoming",
+                    }
+                )
+
+    # -- exceptions: approved ones with an expiry date that the user may read
+    from .exceptions import _visible_tenant_exceptions
+
+    for exc in _visible_tenant_exceptions(tenant):
+        if exc.status != "approved" or not exc.expiry_date:
+            continue
+        if not in_scope(exc.project_id):
+            continue
+        if owner_filter and exc.assignee != owner_filter:
+            continue
+        state = exc.state(today)
+        rows.append(
+            {
+                "kind": "exception",
+                "id": exc.id,
+                "project_id": exc.project_id,
+                "project": project_name(exc.project_id),
+                "name": exc.title,
+                "level": exc.risk,
+                "exc_state": state,
+                "owner_id": exc.assignee,
+                "owner": person(exc.assignee),
+                "planned_end": exc.expiry_date.isoformat(),
+                "status": "overdue" if state == "expired" else "upcoming",
+            }
+        )
+
     # People to pick in the owner filter: members of the projects the user can open
-    people = dict(owners)
+    people = {k: v for k, v in owners.items() if v}
     if accessible:
         member_ids = {
             x[0]
@@ -143,7 +230,9 @@ def get_deadlines_for_tenant(tid):
 
     return jsonify(
         {
-            "today": datetime.utcnow().date().isoformat(),
+            "today": today.isoformat(),
+            "tenant_id": tenant.id,
+            "risk_module": authorizer._can_user_access_risk_module(tenant),
             "me": current_user.id,
             "owner": owner,
             "projects": sorted(

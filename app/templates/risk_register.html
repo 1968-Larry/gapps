@@ -876,6 +876,10 @@ function risks(){
               this.reports = data
               this.filteredReports = data
               this.loadingReports = false
+              // ?risk-id=... (links from the Deadlines page) opens that risk
+              const riskId = new URLSearchParams(window.location.search).get("risk-id")
+              const wanted = riskId && data.find(r => r.id === riskId)
+              if (wanted) this.$nextTick(() => this.openDrawer(wanted))
 			  return(data)
 			},
 			error => {
