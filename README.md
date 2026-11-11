@@ -69,6 +69,11 @@ Gapps is an Security compliance platform that makes it easy to track your progre
 **Controls and evidence**
 - Custom controls and sub-controls: choose the reference code, rename, and add sub-controls
 - Ticket number on sub-controls and a link field on evidence
+- Planned end date on sub-controls; an overdue mark in the control drawer when the date has passed
+  and the sub-control is not complete (fully implemented with evidence)
+- Deadlines page (menu: Deadlines): sub-controls with their planned end over the projects you can
+  open. Filter on owner (default: me), projects, status (overdue / upcoming / complete / without a
+  date) and a date range, grouped per month or per project; a row opens the sub-control
 - "Reload frameworks" for existing tenants
 
 **Reports (project > Report)**

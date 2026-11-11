@@ -36,6 +36,13 @@ def gaps():
     return render_template("gaps.html")
 
 
+@main.route("/deadlines", methods=["GET"])
+@login_required
+def deadlines():
+    """Planned end dates of sub-controls over the projects the user can open."""
+    return render_template("deadlines.html")
+
+
 @main.route("/reports", methods=["GET"])
 @login_required
 def org_reports():

@@ -1,0 +1,319 @@
+{% extends "layouts/sidebar-nav.html" %}
+
+{%block page_header_title%}Deadlines{%endblock%}
+{%block page_header_title_border%}{%endblock%}
+{%block page_header_buttons%}{%endblock%}
+{%block tenant_btn%}{%endblock%}
+
+{%block content%}
+<div x-data="deadlines()" x-cloak class="grid grid-cols-6 gap-4 mt-2">
+	<div class="col-span-6">
+		<div class="card bg-base-100 border border-base-300">
+			<div class="card-body">
+				<div class="flex justify-between items-center">
+					<div>
+						<h2 class="card-title">Deadlines</h2>
+						<p class="text-sm opacity-70">Planned end dates of sub-controls in the projects you can open. Set the date on the sub-control (Planned End). Complete = fully implemented with evidence, same as in the project.</p>
+					</div>
+					<button class="btn btn-sm capitalize tooltip" @click="load" data-tip="Refresh"><i class="ti ti-refresh"></i></button>
+				</div>
+
+				<!-- filters -->
+				<div class="flex flex-row flex-wrap gap-4 mt-4 items-end">
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Owner</span>
+						<select class="select select-sm select-bordered min-w-48" x-model="owner" @change="save(); load()">
+							<option value="me">Me</option>
+							<option value="all">Everyone</option>
+							<template x-for="p in people" :key="p.id">
+								<option :value="p.id" x-text="p.email" :selected="owner === p.id"></option>
+							</template>
+						</select>
+					</label>
+
+					<div class="form-control relative" x-data="{pickerOpen: false}" @click.outside="pickerOpen = false" @keydown.escape.window="pickerOpen = false">
+						<span class="label-text text-xs mb-1">Projects</span>
+						<button type="button" @click="pickerOpen = !pickerOpen" class="btn btn-sm btn-outline border-base-300 font-normal min-w-48 justify-between">
+							<span x-text="projectSummary()"></span>
+							<i class="ti" :class="pickerOpen ? 'ti-chevron-up' : 'ti-chevron-down'"></i>
+						</button>
+						<div x-show="pickerOpen" x-cloak style="position:absolute; top:100%; left:0; margin-top:4px; z-index:1000; width:18rem;" class="bg-base-100 rounded-box p-3 shadow-xl border border-base-300">
+							<div class="flex justify-between mb-2 text-xs">
+								<button type="button" class="underline" @click="excluded = []; save(); load()">Select all</button>
+								<button type="button" class="underline" @click="excluded = projectList.map(p => p.id); save(); load()">Clear</button>
+							</div>
+							<div style="max-height:16rem; overflow-y:auto;" class="space-y-1">
+								<template x-for="project in projectList" :key="project.id">
+									<label class="flex items-center gap-2 cursor-pointer text-sm">
+										<input type="checkbox" class="checkbox checkbox-xs" :checked="!excluded.includes(project.id)" @change="toggleProject(project.id)" />
+										<span x-text="project.name"></span>
+									</label>
+								</template>
+							</div>
+						</div>
+					</div>
+
+					<label class="form-control">
+						<span class="label-text text-xs mb-1">Status</span>
+						<select class="select select-sm select-bordered" x-model="status" @change="save()">
+							<option value="open">Not complete (overdue + upcoming)</option>
+							<option value="overdue">Overdue</option>
+							<option value="upcoming">Upcoming</option>
+							<option value="done">Complete</option>
+							<option value="dated">All with a date</option>
+							<option value="no_date">Without a date</option>
+						</select>
+					</label>
+
+					<label class="form-control" x-show="status !== 'no_date'">
+						<span class="label-text text-xs mb-1">From</span>
+						<input type="date" class="input input-sm input-bordered" x-model="from" @change="save()" />
+					</label>
+					<label class="form-control" x-show="status !== 'no_date'">
+						<span class="label-text text-xs mb-1">To</span>
+						<input type="date" class="input input-sm input-bordered" x-model="to" @change="save()" />
+					</label>
+					<button type="button" class="btn btn-sm btn-ghost" x-show="(from || to) && status !== 'no_date'" @click="from = ''; to = ''; save()">Clear dates</button>
+
+					<div class="form-control ml-auto">
+						<span class="label-text text-xs mb-1">Group by</span>
+						<div class="join">
+							<button type="button" class="btn btn-sm join-item" :class="{'btn-active': groupBy === 'month'}" @click="groupBy = 'month'; save()">Month</button>
+							<button type="button" class="btn btn-sm join-item" :class="{'btn-active': groupBy === 'project'}" @click="groupBy = 'project'; save()">Project</button>
+						</div>
+					</div>
+				</div>
+
+				<!-- counters (owner and projects applied, status and dates not) -->
+				<div class="flex flex-row flex-wrap gap-2 mt-4" x-show="!loading">
+					<button type="button" class="badge badge-lg bg-error text-white border-0 gap-1" @click="status = 'overdue'; save()"><span x-text="count('overdue')"></span> overdue</button>
+					<button type="button" class="badge badge-lg bg-warning text-white border-0 gap-1" @click="status = 'upcoming'; save()"><span x-text="count('upcoming')"></span> upcoming</button>
+					<button type="button" class="badge badge-lg bg-success text-white border-0 gap-1" @click="status = 'done'; save()"><span x-text="count('done')"></span> complete</button>
+					<button type="button" class="badge badge-lg badge-outline gap-1" @click="status = 'no_date'; save()"><span x-text="count('no_date')"></span> without a date</button>
+				</div>
+
+				<div class="mx-auto text-center mt-5" x-show="loading"><span class="loading loading-dots loading-lg"></span></div>
+
+				<div x-show="!loading && !filtered().length" class="text-center py-12 opacity-70">
+					<i class="ti ti-calendar-off text-4xl"></i>
+					<p class="mt-2" x-text="emptyText()"></p>
+				</div>
+
+				<div class="overflow-x-auto mt-4" x-show="!loading && filtered().length">
+					<table class="table table-sm">
+						<thead>
+							<tr>
+								<th class="bg-base-200 w-28">Planned end</th>
+								<th class="bg-base-200" x-show="groupBy === 'month'">Project</th>
+								<th class="bg-base-200">Sub-control</th>
+								<th class="bg-base-200">Owner</th>
+								<th class="bg-base-200 text-center">Implemented</th>
+								<th class="bg-base-200">Status</th>
+							</tr>
+						</thead>
+						<template x-for="group in groups()" :key="group.key">
+							<tbody>
+								<tr>
+									<td colspan="6" class="bg-base-200 font-semibold">
+										<span x-text="group.label"></span>
+										<span class="opacity-60 font-normal text-xs ml-2" x-text="group.rows.length + (group.rows.length === 1 ? ' sub-control' : ' sub-controls')"></span>
+									</td>
+								</tr>
+								<template x-for="row in group.rows" :key="row.id">
+									<tr class="hover cursor-pointer" @click="window.location = link(row)">
+										<td class="whitespace-nowrap" :class="{'text-error font-semibold': row.status === 'overdue'}" x-text="row.planned_end || '-'"></td>
+										<td x-show="groupBy === 'month'" x-text="row.project"></td>
+										<td>
+											<a :href="link(row)" class="hover:underline" x-text="'[' + row.ref_code + '] ' + row.name"></a>
+											<div class="text-xs opacity-60" x-text="'[' + row.control_ref_code + '] ' + row.control"></div>
+										</td>
+										<td class="text-xs" x-text="row.owner || 'Missing owner'" :class="{'text-warning': !row.owner}"></td>
+										<td class="text-center whitespace-nowrap">
+											<span x-text="row.implemented + '%'"></span>
+											<i class="ti ml-1" :class="row.has_evidence ? 'ti-paperclip opacity-70' : 'ti-paperclip-off text-warning'" :title="row.has_evidence ? 'Has evidence' : 'No evidence'"></i>
+										</td>
+										<td>
+											<span class="badge badge-sm border-0 whitespace-nowrap" :class="statusClass(row.status)" x-text="statusLabel(row)"></span>
+										</td>
+									</tr>
+								</template>
+							</tbody>
+						</template>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+	function deadlines() {
+		return {
+			loading: true,
+			rows: [],
+			people: [],
+			projectList: [],
+			today: "",
+			// filters (remembered per organisation)
+			owner: "me",
+			excluded: [],
+			status: "open",
+			from: "",
+			to: "",
+			groupBy: "month",
+			months: ["January", "February", "March", "April", "May", "June", "July",
+				"August", "September", "October", "November", "December"],
+
+			init() {
+				this.restore()
+				this.load()
+			},
+			tenantId() {
+				return this.$store.currentUser.selectedTenant.id
+			},
+			storageKey() {
+				return "deadlines-" + this.tenantId()
+			},
+			restore() {
+				try {
+					const s = JSON.parse(localStorage.getItem(this.storageKey()) || "{}")
+					for (const k of ["owner", "excluded", "status", "from", "to", "groupBy"]) {
+						if (s[k] !== undefined) this[k] = s[k]
+					}
+				} catch (e) { /* storage is optional */ }
+			},
+			save() {
+				try {
+					localStorage.setItem(this.storageKey(), JSON.stringify({
+						owner: this.owner, excluded: this.excluded, status: this.status,
+						from: this.from, to: this.to, groupBy: this.groupBy
+					}))
+				} catch (e) { /* storage is optional */ }
+			},
+
+			load() {
+				this.loading = true
+				const params = new URLSearchParams()
+				params.set("owner", this.owner)
+				const ids = this.projectList.filter(p => !this.excluded.includes(p.id)).map(p => p.id)
+				if (this.projectList.length && ids.length === 0) {
+					this.rows = []
+					this.loading = false
+					return
+				}
+				if (this.projectList.length && ids.length < this.projectList.length) params.set("projects", ids.join(","))
+				request("GET", `/api/v1/tenants/${this.tenantId()}/deadlines?${params.toString()}`,
+					data => {
+						this.projectList = data.projects
+						this.excluded = this.excluded.filter(id => data.projects.some(p => p.id === id))
+						this.people = data.people
+						this.today = data.today
+						// a remembered owner that is no longer around: back to "me"
+						if (!["me", "all"].includes(this.owner) && !data.people.some(p => p.id === this.owner)) {
+							this.owner = "me"
+							this.save()
+							return this.load()
+						}
+						this.rows = data.rows
+						this.loading = false
+					},
+					error => {
+						this.loading = false
+						toast(error.message, "error")
+					}
+				)
+			},
+			toggleProject(id) {
+				this.excluded = this.excluded.includes(id) ? this.excluded.filter(x => x !== id) : [...this.excluded, id]
+				this.save()
+				this.load()
+			},
+			projectSummary() {
+				const n = this.projectList.length - this.excluded.length
+				if (!this.projectList.length) return "No projects"
+				if (n === this.projectList.length) return "All projects (" + n + ")"
+				if (n === 0) return "No projects"
+				return n + " of " + this.projectList.length + " projects"
+			},
+
+			// rows of the selected projects (the server may have sent all of them on the first load)
+			visibleRows() {
+				return this.rows.filter(r => !this.excluded.includes(r.project_id))
+			},
+			count(status) {
+				return this.visibleRows().filter(r => r.status === status).length
+			},
+			filtered() {
+				let rows = this.visibleRows()
+				const s = this.status
+				if (s === "open") rows = rows.filter(r => r.status === "overdue" || r.status === "upcoming")
+				else if (s === "dated") rows = rows.filter(r => r.planned_end)
+				else rows = rows.filter(r => r.status === s)
+				if (s !== "no_date") {
+					if (this.from) rows = rows.filter(r => r.planned_end && r.planned_end >= this.from)
+					if (this.to) rows = rows.filter(r => r.planned_end && r.planned_end <= this.to)
+				}
+				return rows.slice().sort((a, b) =>
+					(a.planned_end || "9999").localeCompare(b.planned_end || "9999") ||
+					a.project.localeCompare(b.project) ||
+					(a.ref_code || "").localeCompare(b.ref_code || "", undefined, {numeric: true}))
+			},
+			groups() {
+				const out = []
+				const byKey = {}
+				for (const row of this.filtered()) {
+					let key, label
+					if (this.groupBy === "project") {
+						key = row.project_id
+						label = row.project
+					} else if (row.planned_end) {
+						key = row.planned_end.slice(0, 7)
+						label = this.months[parseInt(key.slice(5, 7)) - 1] + " " + key.slice(0, 4)
+					} else {
+						key = "none"
+						label = "No planned end"
+					}
+					if (!byKey[key]) {
+						byKey[key] = {key: key, label: label, rows: []}
+						out.push(byKey[key])
+					}
+					byKey[key].rows.push(row)
+				}
+				if (this.groupBy === "project") out.sort((a, b) => a.label.localeCompare(b.label))
+				return out
+			},
+			link(row) {
+				const q = new URLSearchParams({tab: "controls", "control-id": row.project_control_id, "subcontrol-id": row.id})
+				return `/projects/${row.project_id}?${q.toString()}`
+			},
+			statusClass(status) {
+				return {
+					overdue: "bg-error text-white",
+					upcoming: "bg-warning text-white",
+					done: "bg-success text-white",
+					no_date: "badge-ghost",
+				}[status]
+			},
+			statusLabel(row) {
+				if (row.status === "overdue") {
+					const days = Math.round((new Date(this.today) - new Date(row.planned_end)) / 86400000)
+					return days === 1 ? "Overdue 1 day" : `Overdue ${days} days`
+				}
+				if (row.status === "upcoming") {
+					const days = Math.round((new Date(row.planned_end) - new Date(this.today)) / 86400000)
+					return days === 0 ? "Due today" : (days === 1 ? "In 1 day" : `In ${days} days`)
+				}
+				return {done: "Complete", no_date: "No date"}[row.status]
+			},
+			emptyText() {
+				if (!this.projectList.length) return "You have no projects in this organisation."
+				if (this.projectList.length === this.excluded.length) return "Select at least one project."
+				if (!this.visibleRows().length) return this.owner === "me"
+					? "You are not the owner of any applicable sub-control in these projects."
+					: "No applicable sub-controls for this owner."
+				return "Nothing matches the filters."
+			},
+		}
+	}
+</script>
+{%endblock%}

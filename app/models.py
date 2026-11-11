@@ -4931,6 +4931,8 @@ class ProjectSubControl(db.Model, SubControlMixin):
     context = db.Column(db.String())
     notes = db.Column(db.String())
     ticket_number = db.Column(db.String())
+    # Planned completion date (shown on the Deadlines page)
+    planned_end = db.Column(db.Date, nullable=True)
     """
     framework specific fields
     """
@@ -5051,9 +5053,12 @@ class ProjectSubControl(db.Model, SubControlMixin):
         evidence=None,
         owner_id=None,
         ticket_number=None,
+        planned_end=False,
     ):
         """
         Update subcontrol for a project
+
+        planned_end: a date, None to clear it, False (default) to leave it
 
         Args:
 
@@ -5076,6 +5081,9 @@ class ProjectSubControl(db.Model, SubControlMixin):
 
         if ticket_number is not None:
             self.ticket_number = ticket_number
+
+        if planned_end is not False:
+            self.planned_end = planned_end
 
         db.session.commit()
         return self

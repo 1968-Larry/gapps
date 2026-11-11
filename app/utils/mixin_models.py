@@ -5,6 +5,7 @@ from functools import partial
 from app.utils.authorizer import Authorizer
 from sqlalchemy import func
 import arrow
+from datetime import datetime
 
 
 class ControlMixin(object):
@@ -315,6 +316,14 @@ class SubControlMixin(object):
         data["ref_code"] = self.subcontrol.ref_code
         data["guidance"] = self.subcontrol.guidance
         data["evidence"] = self.evidence.count()
+        planned_end = getattr(self, "planned_end", None)
+        data["planned_end"] = planned_end.isoformat() if planned_end else None
+        data["is_overdue"] = bool(
+            planned_end
+            and self.is_applicable
+            and planned_end < datetime.utcnow().date()
+            and not data["is_complete"]
+        )
 
         data["owner"] = (
             User.query.get(self.owner_id).email if self.owner_id else "Missing Owner"

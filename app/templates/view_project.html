@@ -252,6 +252,9 @@
 										<div class="inline-flex">
 											<span x-text="selectedSubControl.completion_status"></span>
 										</div>
+										<span x-show="selectedSubControl.planned_end" class="text-xs mt-1" :class="selectedSubControl.is_overdue ? 'text-error' : 'opacity-70'">
+											<i class="ti ti-calendar-event"></i> <span x-text="(selectedSubControl.is_overdue ? 'Overdue, planned end ' : 'Planned end ') + selectedSubControl.planned_end"></span>
+										</span>
 									</div>
 								</div>
 							</div>
@@ -458,6 +461,7 @@
 									<div x-show="subcontrol.is_complete && subcontrol.is_applicable" class="text-xs text-success">Complete</div>
 									<div x-show="!subcontrol.is_applicable" class="text-xs text-error">Not Applicable</div>
 									<div x-show="subcontrol.is_applicable && !subcontrol.is_complete" class="text-xs text-warning">In Progress</div>
+									<div x-show="subcontrol.is_overdue" class="text-xs text-error whitespace-nowrap" :title="'Planned end ' + subcontrol.planned_end"><i class="ti ti-clock-exclamation"></i> Overdue</div>
 
 								</td>
 
@@ -706,6 +710,11 @@
 									<div class="col-span-3">
 										<h4 class="subtitle text-sm">Ticket Number</h4>
 										<input type="text" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.ticket_number" class="input input-sm input-bordered w-full" placeholder="e.g. JIRA-1234"/>
+									</div>
+									<div class="col-span-3">
+										<h4 class="subtitle text-sm"><i x-show="selectedSubControl.is_overdue" class="ti ti-clock-exclamation text-error mr-1 my-auto"></i>Planned End</h4>
+										<input type="date" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.planned_end" :class="{'input-error': selectedSubControl.is_overdue}" class="input input-sm input-bordered w-full"/>
+										<p x-show="selectedSubControl.is_overdue" class="text-xs text-error mt-1">Overdue: not complete (fully implemented with evidence) by the planned date.</p>
 									</div>
 									<div class="col-span-6">
 										<h4 class="subtitle text-sm"><i x-show="!selectedSubControl.context" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Details</h4>
@@ -6329,7 +6338,8 @@ function project(){
 				"implemented": subcontrol.implemented,
 				"owner-id": subcontrol.owner_id,
 				"context": subcontrol.context,
-				"ticket_number": subcontrol.ticket_number
+				"ticket_number": subcontrol.ticket_number,
+				"planned_end": subcontrol.planned_end || ""
 			}
 
 			request("PUT",

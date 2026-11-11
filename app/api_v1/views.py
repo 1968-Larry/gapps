@@ -12,6 +12,7 @@ from flask_login import current_user
 from app.utils.decorators import login_required
 from app.utils.misc import project_creation, get_users_from_text
 from sqlalchemy import func
+from datetime import datetime
 from app.email import send_email
 from app.utils.reports import Report
 from app.utils.authorizer import Authorizer
@@ -791,6 +792,16 @@ def update_subcontrols_in_control_for_project(cid, sid):
     # TODO - update
     result = Authorizer(current_user).can_user_manage_project_subcontrol(sid)
     payload = request.get_json()
+    planned_end = False  # not sent = leave as is
+    if "planned_end" in payload:
+        value = (payload.get("planned_end") or "").strip()
+        if value:
+            try:
+                planned_end = datetime.strptime(value, "%Y-%m-%d").date()
+            except ValueError:
+                return jsonify({"ok": False, "message": "Invalid planned end date", "code": 400}), 400
+        else:
+            planned_end = None
     subcontrol = result["extra"]["subcontrol"].update(
         applicable=payload.get("applicable"),
         implemented=payload.get("implemented"),
@@ -799,6 +810,7 @@ def update_subcontrols_in_control_for_project(cid, sid):
         evidence=payload.get("evidence"),
         owner_id=payload.get("owner-id"),
         ticket_number=payload.get("ticket_number"),
+        planned_end=planned_end,
     )
     return jsonify(subcontrol.as_dict())
 

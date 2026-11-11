@@ -30,6 +30,7 @@ from app.models import (
 # (table, column, SQL type)
 NEW_COLUMNS = [
     ("project_subcontrols", "ticket_number", "VARCHAR"),
+    ("project_subcontrols", "planned_end", "DATE"),
     ("project_evidence", "link", "VARCHAR"),
     ("risk_register", "likelihood", "INTEGER"),
     ("risk_register", "impact", "INTEGER"),
