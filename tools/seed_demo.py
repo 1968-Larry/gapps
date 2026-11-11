@@ -11,6 +11,8 @@ address domain demo.example.com. Real tenants and users are never touched.
     python3 tools/seed_demo.py --delete              # only delete it
     python3 tools/seed_demo.py --projects 10 --frameworks soc2,iso_27001_2022,nist_csf_v2.0
     python3 tools/seed_demo.py --seed 7              # other (but repeatable) random data
+    python3 tools/seed_demo.py --deadlines           # only (re)set planned end dates on an
+                                                     # existing demo tenant
 
 In the docker setup:  docker exec app python3 tools/seed_demo.py
 
@@ -636,6 +638,52 @@ def add_demo_exceptions(tenant, today):
                       today, tenant.id)
     return created
 
+def add_demo_deadlines(tenant, today, seed):
+    """
+    Planned end dates on sub-controls for the Deadlines page. Whole controls are
+    planned (the sub-controls of a control end within a week or two of each
+    other), so the page shows several sub-controls under one control. Roughly a
+    quarter of the planned controls are in the past, so there are overdue ones;
+    complete sub-controls in the past show up as complete. Uses its own random
+    generator, so the rest of the demo data does not change.
+    """
+    rng = random.Random(seed + 1000)
+    dated = 0
+    for project in Project.query.filter(Project.tenant_id == tenant.id).all():
+        subs = (
+            ProjectSubControl.query.filter(ProjectSubControl.project_id == project.id)
+            .filter(ProjectSubControl.is_applicable == True)  # noqa: E712
+            .all()
+        )
+        for psc in subs:
+            psc.planned_end = None
+        by_control = {}
+        for psc in subs:
+            by_control.setdefault(psc.project_control_id, []).append(psc)
+        for control_subs in by_control.values():
+            if rng.random() > 0.3:
+                continue
+            when = weighted(rng, {"past": 25, "soon": 35, "later": 40})
+            if when == "past":
+                offset = rng.randint(-75, -3)
+            elif when == "soon":
+                offset = rng.randint(0, 45)
+            else:
+                offset = rng.randint(46, 270)
+            target = today + timedelta(days=offset)
+            for psc in control_subs:
+                if rng.random() < 0.85:
+                    psc.planned_end = target + timedelta(days=rng.randint(-7, 7))
+                    dated += 1
+        # a few single sub-controls with their own date
+        for psc in rng.sample(subs, min(len(subs), 4)):
+            if not psc.planned_end:
+                psc.planned_end = today + timedelta(days=rng.randint(-30, 120))
+                dated += 1
+    db.session.commit()
+    return dated
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--tenant", default="demo", help="name of the demo tenant (default: demo)")
@@ -646,10 +694,22 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="random seed (same seed = same data)")
     parser.add_argument("--reset", action="store_true", help="delete the demo tenant first")
     parser.add_argument("--delete", action="store_true", help="only delete the demo tenant")
+    parser.add_argument("--deadlines", action="store_true",
+                        help="only (re)set planned end dates in the existing demo tenant")
     args = parser.parse_args()
 
     app = create_app(os.getenv("FLASK_CONFIG") or "default")
     with app.app_context():
+        if args.deadlines:
+            tenant = find_tenant(args.tenant)
+            if not tenant:
+                sys.exit(f"Tenant '{args.tenant}' not found. Create it first.")
+            owner = User.query.get(tenant.owner_id)
+            if not owner or not owner.email.endswith("@" + DEMO_DOMAIN):
+                sys.exit(f"Tenant '{args.tenant}' is not a demo tenant, refusing to change it.")
+            today = datetime.utcnow().date()
+            log(f"Planned end dates: {add_demo_deadlines(tenant, today, args.seed)} sub-controls")
+            return
         if args.delete or args.reset:
             delete_demo(args.tenant)
             if args.delete:
@@ -731,10 +791,13 @@ def main():
         # exceptions, with their own random generator so the data above stays the same
         total_exceptions = add_demo_exceptions(tenant, today)
 
+        # planned end dates (Deadlines page)
+        total_deadlines = add_demo_deadlines(tenant, today, args.seed)
+
         log("")
         log(
             f"Done: tenant '{args.tenant}', {count} projects, {total_risks} risks, "
-            f"{total_exceptions} exceptions"
+            f"{total_exceptions} exceptions, {total_deadlines} planned end dates"
         )
         log(f"Log in with {admin_email} / {args.password}")
         log(f"All demo users share that password, e.g. {demo_email('Erik', 'Johansson')}")

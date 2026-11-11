@@ -73,7 +73,8 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   and the sub-control is not complete (fully implemented with evidence)
 - Deadlines page (menu: Deadlines): sub-controls with their planned end over the projects you can
   open. Filter on owner (default: me), projects, status (overdue / upcoming / complete / without a
-  date) and a date range, grouped per month or per project; a row opens the sub-control
+  date) and a date range, grouped per month or per project and under each control; a row opens the
+  sub-control
 - "Reload frameworks" for existing tenants
 
 **Reports (project > Report)**
@@ -355,11 +356,12 @@ Set `BACKUP_PASSPHRASE` to encrypt the configuration (it contains secrets) and `
 See the header of each script for all options. More in `db/README.md`.
 
 ##### Demo tenant with example data
-Creates a tenant called `demo` with fake users (`@demo.example.com`, one of them CISO and two security managers), 10 projects, subcontrol status, evidence, risks linked to the controls they concern, and exceptions in every state (active, renewed, expiring, expired, awaiting approval, rejected and reworked, draft, closed) with a back-dated history, comments and organisation level exceptions across projects. The curated content is in `tools/demo_data.py`:
+Creates a tenant called `demo` with fake users (`@demo.example.com`, one of them CISO and two security managers), 10 projects, subcontrol status, evidence, risks linked to the controls they concern, and exceptions in every state (active, renewed, expiring, expired, awaiting approval, rejected and reworked, draft, closed) with a back-dated history, comments and organisation level exceptions across projects, and planned end dates on sub-controls (some overdue) for the Deadlines page. The curated content is in `tools/demo_data.py`:
 ```
 docker exec app python3 tools/seed_demo.py                      # SOC 2, ISO 27001:2022 and NIST CSF 2.0
 docker exec app python3 tools/seed_demo.py --reset              # delete and recreate
 docker exec app python3 tools/seed_demo.py --frameworks iso_27001_2022
+docker exec app python3 tools/seed_demo.py --deadlines          # only (re)set planned end dates (Deadlines page)
 ```
 Only the demo tenant is touched. `--delete` removes it again.
 

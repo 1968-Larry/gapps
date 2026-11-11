@@ -104,28 +104,36 @@
 						<thead>
 							<tr>
 								<th class="bg-base-200 w-28">Planned end</th>
-								<th class="bg-base-200" x-show="groupBy === 'month'">Project</th>
 								<th class="bg-base-200">Sub-control</th>
 								<th class="bg-base-200">Owner</th>
 								<th class="bg-base-200 text-center">Implemented</th>
 								<th class="bg-base-200">Status</th>
 							</tr>
 						</thead>
-						<template x-for="group in groups()" :key="group.key">
+						<!-- one tbody per control; the first control of a month/project also carries its heading -->
+						<template x-for="block in blocks()" :key="block.key">
 							<tbody>
+								<template x-if="block.groupLabel">
+									<tr>
+										<td colspan="5" class="bg-base-300 font-semibold">
+											<span x-text="block.groupLabel"></span>
+											<span class="opacity-60 font-normal text-xs ml-2" x-text="block.groupCount + (block.groupCount === 1 ? ' sub-control' : ' sub-controls')"></span>
+										</td>
+									</tr>
+								</template>
 								<tr>
-									<td colspan="6" class="bg-base-200 font-semibold">
-										<span x-text="group.label"></span>
-										<span class="opacity-60 font-normal text-xs ml-2" x-text="group.rows.length + (group.rows.length === 1 ? ' sub-control' : ' sub-controls')"></span>
+									<td colspan="5" class="bg-base-200 text-sm">
+										<span class="font-semibold" x-text="'[' + block.controlRef + '] ' + block.control"></span>
+										<span x-show="groupBy === 'month'" class="opacity-70 ml-2" x-text="block.project"></span>
+										<span class="opacity-60 text-xs ml-2" x-text="block.rows.length + (block.rows.length === 1 ? ' sub-control' : ' sub-controls')"></span>
+										<span x-show="block.overdue" class="badge badge-sm bg-error text-white border-0 ml-2" x-text="block.overdue + ' overdue'"></span>
 									</td>
 								</tr>
-								<template x-for="row in group.rows" :key="row.id">
+								<template x-for="row in block.rows" :key="row.id">
 									<tr class="hover cursor-pointer" @click="window.location = link(row)">
-										<td class="whitespace-nowrap" :class="{'text-error font-semibold': row.status === 'overdue'}" x-text="row.planned_end || '-'"></td>
-										<td x-show="groupBy === 'month'" x-text="row.project"></td>
+										<td class="whitespace-nowrap pl-6" :class="{'text-error font-semibold': row.status === 'overdue'}" x-text="row.planned_end || '-'"></td>
 										<td>
 											<a :href="link(row)" class="hover:underline" x-text="'[' + row.ref_code + '] ' + row.name"></a>
-											<div class="text-xs opacity-60" x-text="'[' + row.control_ref_code + '] ' + row.control"></div>
 										</td>
 										<td class="text-xs" x-text="row.owner || 'Missing owner'" :class="{'text-warning': !row.owner}"></td>
 										<td class="text-center whitespace-nowrap">
@@ -280,6 +288,39 @@
 					byKey[key].rows.push(row)
 				}
 				if (this.groupBy === "project") out.sort((a, b) => a.label.localeCompare(b.label))
+				return out
+			},
+			// groups() split per control (per project, a control can be in several projects):
+			// [{key, groupLabel (first control of the group only), groupCount, control, controlRef,
+			//   project, overdue, rows}]
+			blocks() {
+				const out = []
+				for (const group of this.groups()) {
+					const controls = []
+					const byKey = {}
+					for (const row of group.rows) {
+						const key = row.project_id + "|" + row.project_control_id
+						if (!byKey[key]) {
+							byKey[key] = {
+								key: group.key + "|" + key, control: row.control, controlRef: row.control_ref_code,
+								project: row.project, overdue: 0, rows: []
+							}
+							controls.push(byKey[key])
+						}
+						byKey[key].rows.push(row)
+						if (row.status === "overdue") byKey[key].overdue += 1
+					}
+					// rows are sorted by date, so a control's position follows its first date;
+					// in the project view sort the controls by reference code instead
+					if (this.groupBy === "project") {
+						controls.sort((a, b) => (a.controlRef || "").localeCompare(b.controlRef || "", undefined, {numeric: true}))
+					}
+					controls.forEach((c, i) => {
+						c.groupLabel = i === 0 ? group.label : null
+						c.groupCount = group.rows.length
+						out.push(c)
+					})
+				}
 				return out
 			},
 			link(row) {
