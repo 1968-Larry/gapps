@@ -81,6 +81,9 @@ def main():
     app.config["SESSION_COOKIE_SECURE"] = False
     failures = []
 
+    # Test data in its own app context. The requests below must NOT run inside
+    # it: Flask-Login caches the logged in user on the app context (g), so a
+    # shared context would make every client look like the last one logged in.
     with app.app_context():
         tenant = Tenant.query.filter_by(name=args.tenant).first()
         if not tenant:
@@ -88,60 +91,63 @@ def main():
         ids = resolve_ids(tenant)
         ensure_user(OUTSIDER, OUTSIDER_PASSWORD, with_tenant=True)
         ensure_user(LOCK_USER, OUTSIDER_PASSWORD, with_tenant=False)
-
-        rules = [
-            r
-            for r in sorted(app.url_map.iter_rules(), key=lambda r: r.rule)
-            if "GET" in r.methods and r.endpoint != "static" and not SKIP.search(r.rule)
-        ]
-
-        # 1. anonymous
-        anon = app.test_client()
-        checked = 0
-        for rule in rules:
-            url = fill(rule, ids)
-            if url is None or PUBLIC.search(rule.rule):
-                continue
-            checked += 1
-            resp = anon.get(url)
-            if not is_denied(resp):
-                failures.append(f"anonymous: {url} -> {resp.status_code}")
-        print(f"Anonymous: {checked} endpoints checked")
-
-        # 2. a user of another tenant
-        client = app.test_client()
-        r = login(client, OUTSIDER, OUTSIDER_PASSWORD)
-        if client.get("/api/v1/session").status_code != 200:
-            sys.exit(f"outsider login failed ({r.status_code} {r.headers.get('Location')})")
-        checked = 0
-        for rule in rules:
-            if "<" not in rule.rule or PUBLIC.search(rule.rule):
-                continue  # only endpoints that take an id of the demo tenant
-            url = fill(rule, ids)
-            if url is None:
-                continue
-            checked += 1
-            try:
-                resp = client.get(url)
-            except Exception as e:
-                failures.append(f"other tenant: {url} -> {type(e).__name__}: {e}")
-                continue
-            if not is_denied(resp) and rule.rule not in ALLOWED_FOR_ANY_USER:
-                body = resp.get_data(as_text=True)[:120].replace("\n", " ")
-                failures.append(f"other tenant: {url} -> {resp.status_code} {body}")
-        print(f"Other tenant: {checked} endpoints checked")
-
-        # 3. brute force lock
         limit = int(app.config.get("LOGIN_MAX_FAILED") or 0)
-        if limit:
-            bf = app.test_client()
-            for _ in range(limit):
-                login(bf, LOCK_USER, "wrong-password-123456")
-            login(bf, LOCK_USER, OUTSIDER_PASSWORD)
-            if bf.get("/api/v1/session").status_code == 200:
-                failures.append(f"brute force: right password accepted after {limit} wrong ones")
-            else:
-                print(f"Brute force: account locked after {limit} wrong passwords")
+
+    rules = [
+        r
+        for r in sorted(app.url_map.iter_rules(), key=lambda r: r.rule)
+        if "GET" in r.methods and r.endpoint != "static" and not SKIP.search(r.rule)
+    ]
+
+    # 1. anonymous
+    anon = app.test_client()
+    checked = 0
+    for rule in rules:
+        url = fill(rule, ids)
+        if url is None or PUBLIC.search(rule.rule):
+            continue
+        checked += 1
+        resp = anon.get(url)
+        if not is_denied(resp):
+            failures.append(f"anonymous: {url} -> {resp.status_code}")
+    print(f"Anonymous: {checked} endpoints checked")
+
+    # 2. a user of another tenant
+    client = app.test_client()
+    r = login(client, OUTSIDER, OUTSIDER_PASSWORD)
+    if client.get("/api/v1/session").status_code != 200:
+        sys.exit(f"outsider login failed ({r.status_code} {r.headers.get('Location')})")
+    checked = 0
+    for rule in rules:
+        if "<" not in rule.rule or PUBLIC.search(rule.rule):
+            continue  # only endpoints that take an id of the demo tenant
+        url = fill(rule, ids)
+        if url is None:
+            continue
+        checked += 1
+        try:
+            resp = client.get(url)
+        except Exception as e:
+            failures.append(f"other tenant: {url} -> {type(e).__name__}: {e}")
+            continue
+        if not is_denied(resp) and rule.rule not in ALLOWED_FOR_ANY_USER:
+            body = resp.get_data(as_text=True)[:120].replace("\n", " ")
+            failures.append(f"other tenant: {url} -> {resp.status_code} {body}")
+    print(f"Other tenant: {checked} endpoints checked")
+
+    # 3. brute force lock
+    if limit:
+        bf = app.test_client()
+        codes = [login(bf, LOCK_USER, "wrong-password-123456").status_code for _ in range(limit)]
+        last = login(bf, LOCK_USER, OUTSIDER_PASSWORD)
+        if bf.get("/api/v1/session").status_code == 200:
+            failures.append(
+                f"brute force: right password accepted after {limit} wrong ones "
+                f"(answers {codes}, then {last.status_code})"
+            )
+        else:
+            print(f"Brute force: account locked after {limit} wrong passwords")
+        with app.app_context():
             ensure_user(LOCK_USER, OUTSIDER_PASSWORD, with_tenant=False)  # unlock again
 
     if failures:
