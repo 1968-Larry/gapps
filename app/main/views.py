@@ -1,5 +1,7 @@
 from flask import (
     send_from_directory,
+    redirect,
+    url_for,
 )
 from . import main
 from app.utils.decorators import *
@@ -70,14 +72,6 @@ def exceptions(id):
     return render_template("exceptions.html", tenant_id=id)
 
 
-@main.route("/tenants/<string:id>/policy-center", methods=["GET"])
-@login_required
-def view_policy_center(id):
-    Authorizer(current_user).can_user_access_tenant(id)
-    policy_id = request.args.get("policy-id")
-    return render_template("pc.html", tenant_id=id, policy_id=policy_id)
-
-
 @main.route("/projects", methods=["GET"])
 @login_required
 def projects():
@@ -94,12 +88,10 @@ def view_project(pid):
 @main.route("/projects/<string:pid>/controls/<string:cid>", methods=["GET"])
 @login_required
 def view_control_in_project(pid, cid):
+    # The separate control page is gone upstream; controls open on the project page
     result = Authorizer(current_user).can_user_read_project_control(cid)
-    return render_template(
-        "view_control_in_project.html",
-        project=result["extra"]["control"].project,
-        project_control=result["extra"]["control"],
-    )
+    project = result["extra"]["control"].project
+    return redirect(url_for("main.view_project", pid=project.id, tab="controls"))
 
 
 @main.route("/projects/<string:id>/policy-center", methods=["GET"])

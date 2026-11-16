@@ -15,6 +15,7 @@ Browser test (Chromium via Playwright), run by CI against the running app.
 """
 import argparse
 import json
+import re
 import sys
 
 from playwright.sync_api import sync_playwright
@@ -77,10 +78,16 @@ def check_pages(browser, base, tid, pid, email, password):
     context = browser.new_context()
     page = context.new_page()
     problems, csp = [], set()
+    alpine = set()  # (page, expression, error) from Alpine's console warnings
     current = {"url": ""}
 
     def on_console(msg):
         text = msg.text
+        if "Alpine Expression Error" in text:
+            m = re.search(r'Alpine Expression Error: (.*?)\s+Expression: "(.*?)"\s*$', text, re.S)
+            if m:
+                alpine.add((current["url"], m.group(2)[:200], m.group(1)[:150]))
+            return
         if "Content Security Policy" in text or "Content-Security-Policy" in text:
             csp.add(f"{current['url']}: {text[:300]}")
         elif msg.type == "error" and "Failed to load resource" not in text:
@@ -118,6 +125,10 @@ def check_pages(browser, base, tid, pid, email, password):
         if resp and resp.status >= 500:
             problems.append(f"{path}: HTTP {resp.status}")
     context.close()
+    if alpine:
+        print(f"\nAlpine expression errors ({len(alpine)}):")
+        for page_, expr, err in sorted(alpine):
+            print(f"  {page_}  [{err}]  {expr}")
     return problems, csp
 
 

@@ -36,13 +36,6 @@ def logs():
     return render_template("logs.html")
 
 
-@main.route("/tenants/<string:id>/logs", methods=["GET"])
-@login_required
-def get_logs_for_tenant(id):
-    Authorizer(current_user).can_user_access_tenant(id)
-    return render_template("tenant_logs.html")
-
-
 @main.route("/users", methods=["GET"])
 @login_required
 def tenant_users():

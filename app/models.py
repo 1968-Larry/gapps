@@ -2845,6 +2845,11 @@ class Project(db.Model, DateMixin):
         )
         return applicable_controls_count
 
+    def subcontrols(self, as_query=False):
+        """All subcontrols of the project (the API endpoints and evidence_groupings use this)."""
+        _query = ProjectSubControl.query.filter(ProjectSubControl.project_id == self.id)
+        return _query if as_query else _query.all()
+
     def evidence_groupings(self):
         data = {}
         for sub in self.subcontrols():

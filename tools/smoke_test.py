@@ -42,14 +42,7 @@ SKIP = re.compile(
 # Broken before the dependency upgrade as well (inherited from upstream, not
 # linked from the UI). Reported, but they do not fail the test. Remove a line
 # when it is fixed, so a new break there is caught.
-KNOWN_BROKEN = {
-    "/api/v1/projects/<string:pid>/evidence/controls": "Project has no attribute subcontrols",
-    "/api/v1/projects/<string:pid>/matrix/summary": "Project has no attribute subcontrols",
-    "/api/v1/projects/<string:pid>/matrix/users/<string:uid>": "Project has no attribute subcontrols",
-    "/projects/<string:pid>/controls/<string:cid>": "template view_control_in_project.html missing",
-    "/tenants/<string:id>/logs": "template tenant_logs.html missing",
-    "/tenants/<string:id>/policy-center": "template pc.html missing",
-}
+KNOWN_BROKEN = {}
 STATIC_RE = re.compile(r"""(?:src|href)=["'](/static/[^"'?#]+)""")
 
 
