@@ -63,6 +63,7 @@
           result.policyMode = editor.mode.get();
 
           const cfg = getEditorConfig("#notes", true);
+          cfg.content_css = "/app/static/css/tiny_custom.css"; // served from the repo root here
           cfg.setup = (ro) => {
             ro.on("init", () => {
               // the read-only mode is applied right after init

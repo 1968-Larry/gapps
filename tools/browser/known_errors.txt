@@ -1,0 +1,75 @@
+# JavaScript errors that the main pages already had before the dependency
+# upgrade (same list on the old and the new stack, Nov 2026): mostly Alpine
+# expressions that read data before it has loaded. The browser test does not
+# fail on these, only on new ones. Format: page<TAB>message
+/admin/users	Cannot read properties of undefined (reading 'includes')
+/admin/users	selected is not defined
+/projects/{pid}	Cannot read properties of null (reading 'completion_status')
+/projects/{pid}	Cannot read properties of null (reading 'context')
+/projects/{pid}	Cannot read properties of null (reading 'description')
+/projects/{pid}	Cannot read properties of null (reading 'evidence')
+/projects/{pid}	Cannot read properties of null (reading 'feedback')
+/projects/{pid}	Cannot read properties of null (reading 'guidance')
+/projects/{pid}	Cannot read properties of null (reading 'has_evidence')
+/projects/{pid}	Cannot read properties of null (reading 'has_risks')
+/projects/{pid}	Cannot read properties of null (reading 'id')
+/projects/{pid}	Cannot read properties of null (reading 'implemented')
+/projects/{pid}	Cannot read properties of null (reading 'is_applicable')
+/projects/{pid}	Cannot read properties of null (reading 'is_overdue')
+/projects/{pid}	Cannot read properties of null (reading 'name')
+/projects/{pid}	Cannot read properties of null (reading 'owner')
+/projects/{pid}	Cannot read properties of null (reading 'owner_id')
+/projects/{pid}	Cannot read properties of null (reading 'planned_end')
+/projects/{pid}	Cannot read properties of null (reading 'progress_completed')
+/projects/{pid}	Cannot read properties of null (reading 'progress_evidence')
+/projects/{pid}	Cannot read properties of null (reading 'progress_implemented')
+/projects/{pid}	Cannot read properties of null (reading 'ref_code')
+/projects/{pid}	Cannot read properties of null (reading 'relates_to')
+/projects/{pid}	Cannot read properties of null (reading 'response')
+/projects/{pid}	Cannot read properties of null (reading 'review_complete')
+/projects/{pid}	Cannot read properties of null (reading 'review_status')
+/projects/{pid}	Cannot read properties of null (reading 'risk_relation')
+/projects/{pid}	Cannot read properties of null (reading 'risks')
+/projects/{pid}	Cannot read properties of null (reading 'stats')
+/projects/{pid}	Cannot read properties of null (reading 'status')
+/projects/{pid}	Cannot read properties of null (reading 'subcontrol_id')
+/projects/{pid}	Cannot read properties of null (reading 'subcontrols')
+/projects/{pid}	Cannot read properties of null (reading 'tags')
+/projects/{pid}	Cannot read properties of null (reading 'ticket_number')
+/projects/{pid}	Cannot read properties of null (reading 'title')
+/projects/{pid}	Cannot read properties of undefined (reading 'controls')
+/projects/{pid}	Cannot read properties of undefined (reading 'length')
+/projects/{pid}	Cannot read properties of undefined (reading 'name')
+/projects/{pid}	Cannot read properties of undefined (reading 'some')
+/projects/{pid}	Cannot read properties of undefined (reading 'toUpperCase')
+/projects/{pid}	Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.
+/projects/{pid}	Failed to set the 'value' property on 'HTMLProgressElement': The provided double value is non-finite.
+/projects/{pid}	acceptedReportsCount is not defined
+/projects/{pid}	created30Count is not defined
+/projects/{pid}	created7Count is not defined
+/projects/{pid}	createdTodayCount is not defined
+/projects/{pid}	initialHighRiskCount is not defined
+/projects/{pid}	initialLowRiskCount is not defined
+/projects/{pid}	initialUnknownRiskCount is not defined
+/projects/{pid}	initialVeryHighRiskCount is not defined
+/projects/{pid}	initialVeryLowRiskCount is not defined
+/projects/{pid}	item is not defined
+/projects/{pid}	mitigatedReportsCount is not defined
+/projects/{pid}	newReportsCount is not defined
+/projects/{pid}	previousSelectedReport is not defined
+/projects/{pid}	triageReportsCount is not defined
+/projects/{pid}/policy-center	Cannot read properties of undefined (reading 'length')
+/projects/{pid}/policy-center	this.setEditorAsReadOnly is not a function
+/tenants/{tid}/risk	Cannot read properties of undefined (reading 'length')
+/tenants/{tid}/risk	acceptedReportsCount is not defined
+/tenants/{tid}/risk	created30Count is not defined
+/tenants/{tid}/risk	created7Count is not defined
+/tenants/{tid}/risk	createdTodayCount is not defined
+/tenants/{tid}/risk	initialHighRiskCount is not defined
+/tenants/{tid}/risk	initialLowRiskCount is not defined
+/tenants/{tid}/risk	initialUnknownRiskCount is not defined
+/tenants/{tid}/risk	initialVeryHighRiskCount is not defined
+/tenants/{tid}/risk	initialVeryLowRiskCount is not defined
+/tenants/{tid}/risk	mitigatedReportsCount is not defined
+/tenants/{tid}/risk	newReportsCount is not defined
+/tenants/{tid}/risk	triageReportsCount is not defined
