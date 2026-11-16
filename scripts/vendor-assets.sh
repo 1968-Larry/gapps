@@ -17,10 +17,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT/vendor"
 
-if [ -f package-lock.json ]; then
-  npm ci --ignore-scripts --no-audit --no-fund
-else
-  npm install --ignore-scripts --no-audit --no-fund
-fi
+# npm install (not npm ci): keeps the versions in package-lock.json, but also
+# updates it when package.json was edited by hand
+npm install --ignore-scripts --no-audit --no-fund
 
 node "$ROOT/scripts/sync-vendor.mjs"
