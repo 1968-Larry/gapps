@@ -126,7 +126,7 @@
 										'progress-warning': selectedControl?.progress_implemented >= 30 && selectedControl?.progress_implemented < 75,
 										'progress-success': selectedControl?.progress_implemented >= 75
 									}"
-									class="progress h-1" :value="selectedControl?.progress_implemented+1" max="100"></progress>
+									class="progress h-1" :value="(selectedControl?.progress_implemented || 0)+1" max="100"></progress>
 								<div class="flex justify-between mt-4">
 									<h3 class="subtitle text-xs">Evidence Collection</h3>
 									<h3 class="subtitle text-xs" x-text="selectedControl?.progress_evidence+'%'"></h3>
@@ -137,7 +137,7 @@
 										'progress-warning': selectedControl?.progress_evidence >= 30 && selectedControl?.progress_evidence < 75,
 										'progress-success': selectedControl?.progress_evidence >= 75
 									}"
-									class="progress h-1" :value="selectedControl?.progress_evidence+1" max="100"></progress>
+									class="progress h-1" :value="(selectedControl?.progress_evidence || 0)+1" max="100"></progress>
 							</div>
 						</div>
 						<div class="col-span-6">
@@ -270,7 +270,7 @@
 											'progress-warning': selectedSubControl?.implemented >= 30 && selectedSubControl?.implemented < 75,
 											'progress-success': selectedSubControl?.implemented >= 75
 										}"
-										class="progress h-1" :value="selectedSubControl?.implemented+1" max="100"></progress>
+										class="progress h-1" :value="(selectedSubControl?.implemented || 0)+1" max="100"></progress>
 									<div class="flex justify-between mt-4">
 										<h3 class="subtitle text-xs">Evidence Attached</h3>
 										<h3 x-show="selectedSubControl?.has_evidence" class="subtitle text-xs">100%</h3>
@@ -370,8 +370,8 @@
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Applicable</h4>
 									<div class="flex flex-row">
-										<input x-show="selectedControl?.is_applicable" x-model="selectedControl.is_applicable" @change="setAsNotApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
-										<input x-show="!selectedControl?.is_applicable" x-model="selectedControl.is_applicable" @change="setAsApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
+										<input x-show="selectedControl?.is_applicable" x-model="(selectedControl ?? {}).is_applicable" @change="setAsNotApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
+										<input x-show="!selectedControl?.is_applicable" x-model="(selectedControl ?? {}).is_applicable" @change="setAsApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
 									</div>
 								</div>
 								<div class="col-span-2">
@@ -685,12 +685,12 @@
 									<div class="col-span-2">
 										<h4 class="subtitle text-sm">Is Applicable</h4>
 										<div class="flex flex-row">
-											<input x-model="selectedSubControl.is_applicable" @change="updateSubcontrol(selectedSubControl)" type="checkbox" :class="{'toggle-success':selectedSubControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedSubControl?.is_applicable" />
+											<input x-model="(selectedSubControl ?? {}).is_applicable" @change="updateSubcontrol(selectedSubControl)" type="checkbox" :class="{'toggle-success':selectedSubControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedSubControl?.is_applicable" />
 										</div>
 									</div>
 									 <div class="col-span-3">
 										<h4 class="subtitle text-sm"><i x-show="selectedSubControl?.implemented===0" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Progress</h4>
-										<select @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.implemented" class="select w-full select-sm">
+										<select @change="updateSubcontrol(selectedSubControl)" x-model="(selectedSubControl ?? {}).implemented" class="select w-full select-sm">
 										  <option value="0" :selected="parseInt(selectedSubControl?.implemented) === 0">Not Implemented</option>
 										  <option value="50" :selected="parseInt(selectedSubControl?.implemented) > 0 && parseInt(selectedSubControl?.implemented) < 100">Partially Implemented</option>
 										  <option value="100" :selected="parseInt(selectedSubControl?.implemented) === 100">Fully Implemented</option>
@@ -700,7 +700,7 @@
 										<div class="flex flex-row">
 											<h4 class="subtitle text-sm"><i x-show="!selectedSubControl?.owner_id" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Owner</h4>
 										</div>
-										<select @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.owner_id" class="select select-sm w-full">
+										<select @change="updateSubcontrol(selectedSubControl)" x-model="(selectedSubControl ?? {}).owner_id" class="select select-sm w-full">
 											<option value="" :selected="selectedSubControl?.owner === 'Missing Owner'">Missing Owner</option>
 											<template  x-for="user in projectUsers">
 												<option :value="user.id" x-text="user.email" :selected="selectedSubControl?.owner === user.email"></option>
@@ -709,16 +709,16 @@
 									</div>
 									<div class="col-span-3">
 										<h4 class="subtitle text-sm">Ticket Number</h4>
-										<input type="text" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.ticket_number" class="input input-sm input-bordered w-full" placeholder="e.g. JIRA-1234"/>
+										<input type="text" @change="updateSubcontrol(selectedSubControl)" x-model="(selectedSubControl ?? {}).ticket_number" class="input input-sm input-bordered w-full" placeholder="e.g. JIRA-1234"/>
 									</div>
 									<div class="col-span-3">
 										<h4 class="subtitle text-sm"><i x-show="selectedSubControl?.is_overdue" class="ti ti-clock-exclamation text-error mr-1 my-auto"></i>Planned End</h4>
-										<input type="date" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.planned_end" :class="{'input-error': selectedSubControl?.is_overdue}" class="input input-sm input-bordered w-full"/>
+										<input type="date" @change="updateSubcontrol(selectedSubControl)" x-model="(selectedSubControl ?? {}).planned_end" :class="{'input-error': selectedSubControl?.is_overdue}" class="input input-sm input-bordered w-full"/>
 										<p x-show="selectedSubControl?.is_overdue" class="text-xs text-error mt-1">Overdue: not complete (fully implemented with evidence) by the planned date.</p>
 									</div>
 									<div class="col-span-6">
 										<h4 class="subtitle text-sm"><i x-show="!selectedSubControl?.context" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Details</h4>
-										<textarea rows="5" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.context" :value="selectedSubControl?.context" x-text="selectedSubControl?.context" :class="{'border-warning animate-pulse': !selectedSubControl?.context && selectedSubControl?.implemented>0}" class="textarea w-full" placeholder="Add information about how the subcontrol is satisfied. Provide details on the scope and any context for the auditor."></textarea>
+										<textarea rows="5" @change="updateSubcontrol(selectedSubControl)" x-model="(selectedSubControl ?? {}).context" :value="selectedSubControl?.context" x-text="selectedSubControl?.context" :class="{'border-warning animate-pulse': !selectedSubControl?.context && selectedSubControl?.implemented>0}" class="textarea w-full" placeholder="Add information about how the subcontrol is satisfied. Provide details on the scope and any context for the auditor."></textarea>
 										<p class="text-xs">Note: The implementation details describes how the InfoSec team satisfies the control.</p>
 									</div>
 
@@ -3792,21 +3792,21 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 								<div class="w-full leading-none my-auto">
 									<input :disabled="!isAuditor" type="text"
 										   class="text-md w-full bg-base-200 input input-sm leading-none"
-										   x-model="selectedFeedback.title"
+										   x-model="(selectedFeedback ?? {}).title"
 										   placeholder="Add Feedback..."/>
 								</div>
 							</div>
 							<div class="col-span-full space-y-2">
 								<label class="block text-sm font-medium"><i class="ti ti-alert-triangle mr-2 text-warning"></i>Description from Auditor</label>
 								<textarea :disabled="!isAuditor" class="textarea bg-base-200 w-full leading-tight"
-										  rows="3" x-model="selectedFeedback.description"
+										  rows="3" x-model="(selectedFeedback ?? {}).description"
 										  placeholder="Describe the feedback/question for the InfoSec team. For example, 'Supplied evidence is not sufficient for X reasons'"></textarea>
 							</div>
 
 							<div class="col-span-full space-y-2">
 								<label x-show="isAuditor || selectedFeedback?.relates_to" class="text-sm font-medium"><i class="ti ti-alert-triangle text-md mr-2 text-warning"></i>(Optional) Which subcontrol does the feedback relate to?</label>
 								<div x-show="isAuditor || selectedFeedback?.relates_to" class="flex flex-row">
-									<select :disabled="!isAuditor" x-model="selectedFeedback.relates_to" class="select select-sm select-bordered w-full">
+									<select :disabled="!isAuditor" x-model="(selectedFeedback ?? {}).relates_to" class="select select-sm select-bordered w-full">
 									  <option disabled :selected="!selectedFeedback?.relates_to">Select a Subcontrol</option>
 										<template x-for="subcontrol in (selectedControl?.subcontrols ?? [])">
 											<option :selected="selectedFeedback?.relates_to === subcontrol.id" :value="subcontrol.id" x-text="getSubcontrolSelection(subcontrol)"></option>
@@ -3823,7 +3823,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							Response from InfoSec Team</label>
 							<textarea :disabled="isAuditor || !isAuditor && (selectedControl?.review_status === 'ready for auditor' || selectedControl?.review_status === 'complete')" :class="{'border border-error':!isAuditor && !selectedFeedback?.response}" :disabled="isAuditor" class="textarea bg-base-200 w-full leading-tight"
 								  rows="10" @change="updateItem(selectedFeedback)"
-								  x-model="selectedFeedback.response"
+								  x-model="(selectedFeedback ?? {}).response"
 								  placeholder="Provide a explanation to the Auditors feedback"></textarea>
 						</div>
 					</div>

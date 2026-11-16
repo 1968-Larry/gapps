@@ -94,7 +94,13 @@ def check_pages(browser, base, tid, pid, email, password):
             problems.append(f"{current['url']}: console error: {text[:300]}")
 
     page.on("console", on_console)
-    page.on("pageerror", lambda e: problems.append(f"{current['url']}: {e}"[:400]))
+    stacks = {}
+
+    def on_pageerror(e):
+        problems.append(f"{current['url']}: {e}"[:400])
+        stacks.setdefault(str(e)[:150], (e.stack or "").split("\n")[1:3])
+
+    page.on("pageerror", on_pageerror)
 
     def on_response(resp):
         if "/static/" in resp.url and resp.status >= 400:
@@ -125,6 +131,10 @@ def check_pages(browser, base, tid, pid, email, password):
         if resp and resp.status >= 500:
             problems.append(f"{path}: HTTP {resp.status}")
     context.close()
+    if stacks:
+        print("\nWhere the page errors come from (first frames):")
+        for msg, frames in sorted(stacks.items()):
+            print(f"  {msg}\n      " + "\n      ".join(f.strip() for f in frames))
     if alpine:
         print(f"\nAlpine expression errors ({len(alpine)}):")
         for page_, expr, err in sorted(alpine):

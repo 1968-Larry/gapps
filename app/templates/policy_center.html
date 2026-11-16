@@ -626,7 +626,7 @@
                 </div>
                 <div class="modal-action">
                     <button class="btn" @click="showReadOnlyModal=false">Close</button>
-                    <button @click="setEditorAsReadOnly;showReadOnlyModal=false" class="btn btn-success">Switch</button>
+                    <button @click="setEditorAsReadOnly();showReadOnlyModal=false" class="btn btn-success">Switch</button>
                 </div>
             </div>
         </div>
@@ -1031,7 +1031,7 @@
                         editor.on('init', function() {
 
                             if (outerContext.readOnly || outerContext.preview) {
-                                this.setEditorAsReadOnly()
+                                outerContext.setEditorAsReadOnly()
                             }
                             editor.focus();
                             //outerContext.applyHeader("h1", dnt=true)
