@@ -1,9 +1,20 @@
-# Gapps
+# Gapps (fork)
 
-Gapps is an Security compliance platform that makes it easy to track your progress against various security frameworks.
+> **This is a fork of [bmarsh9/gapps](https://github.com/bmarsh9/gapps)**, the security compliance
+> platform by Brendan Marshall. It is maintained separately, with the changes listed under
+> [Added in this fork](#added-in-this-fork-wrench) (on-prem ADFS sign-in, audit logging, risk
+> management, exceptions, security fixes and more).
+>
+> - Questions, bugs and ideas about **this fork**: open an
+>   [issue in this repository](https://github.com/1968-Larry/gapps/issues). Please do not
+>   contact the original project about anything that only exists here.
+> - Security problems: see [SECURITY.md](SECURITY.md) (report privately, not in a public issue).
+> - The original project, its documentation and its community are at
+>   [bmarsh9/gapps](https://github.com/bmarsh9/gapps).
+>
+> Licence: the same as the original, AGPL-3.0 with the Commons Clause (see [LICENSE](LICENSE)).
 
-:snowflake: View the [Gapps site](https://web-gapps.pages.dev/)  
-🏠 Interested in contacting me? Please join our [discord](https://discord.gg/9unhWAqadg)
+Gapps is a security compliance platform that makes it easy to track your progress against various security frameworks.
 
 ### Table of Contents
 1. [Getting Started](#getting-started)
@@ -188,7 +199,22 @@ Gap report over several projects (PDF)          |
 
 ### Getting Started
 
-Follow the documentation [documentation](https://web-gapps.pages.dev/docs)
+This fork is run from source with Docker Compose (there are no published images for it; the
+images on Docker Hub, `bmarsh13/gapps`, are the original project without the changes of this fork).
+
+```
+git clone https://github.com/1968-Larry/gapps.git
+cd gapps
+cp .env.example .env                      # set SECRET_KEY, HOST_NAME, mail, sign-in ...
+cp docker-compose.override.yml.example docker-compose.override.yml   # volumes, .env
+docker compose build app
+docker compose up -d
+```
+
+Updating: `git pull`, then `docker compose build app && docker compose up -d`. Schema changes
+are applied when the container starts (see [Updating the database](#updating-the-database-after-pulling-new-code)).
+The general documentation of the original project is at
+[web-gapps.pages.dev/docs](https://web-gapps.pages.dev/docs).
 
 
 ### FAQ
@@ -227,7 +253,7 @@ When starting Gapps for the first time, it will automatically create the databas
 ##### Running Gapps for development
 Sometimes you may want to run Gapps outside of Docker. You can do this by starting the Postgres container and then starting Gapps in the foreground.
 
-1. Uncomment ports declaration [here](https://github.com/bmarsh9/gapps/blob/e8dd926fb946e47fa66f918afa543c535ae212be/docker-compose.yml#L59)
+1. Make sure the postgres service publishes port 5432 (it does in `docker-compose.yml`)
 2. Start the postgres container: `docker-compose up -d postgres`
 3. Set the following env variables:
 ```
@@ -241,9 +267,9 @@ export SQLALCHEMY_DATABASE_URI="postgresql://db1:db1@localhost/db1"
 5. Gapps should be running and connected to the database. You can now make changes to the code.
 
 ##### Running with Docker Desktop
-1. Download the [docker-compose.yml](https://github.com/bmarsh9/gapps/blob/main/docker-compose.yml) file
-2. Open up a elevated command prompt and change directories (cd) to where the docker-compose.yml file was downloaded (likely Downloads)
-3. Run `docker compose up`
+1. Clone this repository (or download it as a ZIP from GitHub) and open a command prompt in the folder
+2. Copy `.env.example` to `.env` and set at least `SECRET_KEY`
+3. Run `docker compose up --build`
 
 ##### View env variables for debugging
 ```
@@ -275,9 +301,10 @@ python3 manage.py init_db
 ```
 
 ##### Upgrading versions
-1.) Edit `docker-compose.yml` file with the desired version from [Docker Hub](https://hub.docker.com/r/bmarsh13/gapps/tags). Anywhere you see the old version in the compose file (should be 4 instances), update it with the desired version. (e.g. bmarsh13/gapps:3.3.9 -> bmarsh13/gapps:3.4.0)  
-2.) `docker-compose up -d`  
-3.) [Perform database migration](https://github.com/bmarsh9/gapps#perform-database-migration) if neccesary 
+1.) `git pull`  
+2.) `docker compose build app && docker compose up -d`  
+3.) [Perform database migration](#perform-database-migration) if necessary (normally not: new
+columns and tables are added at start, see below)
 
 ##### Loading new frameworks into Gapps
 
@@ -421,12 +448,11 @@ Only the demo tenant is touched. `--delete` removes it again.
 New columns and tables are added by `tools/apply_schema_updates.py`, which runs when the container starts.
 To apply the changes by hand, use the SQL scripts in `db/` (`db/apply.sh`, see `db/README.md`).
 
-##### Building and pushing
+##### Building the image
 ```
-docker build -t gapps:3.4.3 .
-docker tag gapps:3.4.3 bmarsh13/gapps:3.4.3
-docker push bmarsh13/gapps:3.4.3
+docker compose build app
 ```
+Do not push images of this fork as `bmarsh13/gapps`: that name belongs to the original project.
 
 ##### API Authentication
 
