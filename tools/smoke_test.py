@@ -13,6 +13,7 @@ import argparse
 import os
 import re
 import sys
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -111,8 +112,8 @@ def main():
             admin = User.query.filter_by(
                 email=os.environ.get("DEFAULT_EMAIL", "admin@example.com")
             ).first()
-            if admin and getattr(admin, "require_pwd_change", False):
-                admin.require_pwd_change = False
+            if admin and admin.is_password_change_required():
+                admin.last_password_change = datetime.utcnow()
                 db.session.commit()
         ids = resolve_ids(tenant)
         print(f"Tenant {tenant.name}: " + ", ".join(f"{k}={v}" for k, v in ids.items()))

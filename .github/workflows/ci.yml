@@ -52,19 +52,20 @@ jobs:
 
       - name: Login over HTTP (gunicorn, real cookies)
         run: |
+          # the built-in admin must change its password first; skip that here
           docker compose exec -T app python3 -c "
+          from datetime import datetime
           from app import create_app, db
           from app.models import User
           app = create_app()
           with app.app_context():
               u = User.query.filter_by(email='admin@example.com').first()
-              u.require_pwd_change = False
+              u.last_password_change = datetime.utcnow()
               db.session.commit()
           "
-          curl -fsS -c jar -b jar -D - -o /dev/null -w "POST /login -> %{http_code} %{redirect_url}\n" \
+          curl -fsS -c jar -b jar -o /dev/null -w "POST /login -> %{http_code} %{redirect_url}\n" \
             -d email=admin@example.com -d password=admin1234567 http://localhost:8000/login
-          cat jar
-          code=$(curl -sS -b jar -D - -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/session | tee /dev/stderr | tail -1)
+          code=$(curl -sS -b jar -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/session)
           echo "GET /api/v1/session -> $code"
           test "$code" = 200
 
