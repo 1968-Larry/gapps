@@ -20,7 +20,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # When vendor/package.json changed but app/static/vendor/ is not synced yet,
+  # the vendor-sync workflow commits the files and starts ci again; skip this run.
+  vendor-state:
+    runs-on: ubuntu-latest
+    outputs:
+      synced: ${{ steps.check.outputs.synced }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          synced=$(python3 -c "
+          import json
+          want = json.load(open('vendor/package.json'))['dependencies']
+          try:
+              have = json.load(open('app/static/vendor/manifest.json'))['packages']
+          except OSError:
+              have = {}
+          print('true' if all(have.get(k) == v for k, v in want.items()) else 'false')
+          ")
+          echo "synced=$synced" >> "$GITHUB_OUTPUT"
+          [ "$synced" = true ] || echo "::notice::app/static/vendor is not synced yet; vendor-sync will run ci on the synced commit"
+
   test:
+    needs: vendor-state
+    if: needs.vendor-state.outputs.synced == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

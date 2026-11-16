@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to start the ci workflow on the synced commit
 
 concurrency:
   group: vendor-sync-${{ github.ref }}
@@ -88,3 +89,14 @@ jobs:
           git commit -m "Refresh tl_src/package-lock.json"
           git pull --rebase
           git push
+
+      # Commits pushed with GITHUB_TOKEN do not start other workflows, so start
+      # ci for the synced commit here (ci skips the commit before the sync).
+      - name: Run ci on the synced commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git fetch -q origin "$GITHUB_REF_NAME"
+          if [ "$(git rev-parse FETCH_HEAD)" != "$GITHUB_SHA" ]; then
+            gh workflow run ci.yml --ref "$GITHUB_REF_NAME"
+          fi
