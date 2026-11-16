@@ -375,7 +375,7 @@
             <div class="card card-body">
                 <div class="flex justify-between">
                     <span class="text-xl"><i class="ti ti-book mr-1 my-auto text-lg"></i>Policy Versions</span>
-                    <div x-text="selectedPolicy.versions.length" class="flex flex-row gap-x-2"></div>
+                    <div x-text="selectedPolicy.versions?.length" class="flex flex-row gap-x-2"></div>
                 </div>
                 <div role="alert" class="alert bg-base-300">
                   <span>Select below to load different versions into the editor. Only one version of a policy can be published at a time. Once published, it will be the "official" policy.</span>

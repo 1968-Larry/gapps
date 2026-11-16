@@ -213,7 +213,9 @@ function table(){
         showInviteAlert: false,
         inviteUserMessageTitle: "",
         inviteLink: "",
-        payload: {},
+        payload: {email: ""},
+        selected: [],
+        unselected: [],
         tableHeaders: [
           {"field": "id", "headerName": "#", "width": 100, "filter": "agTextColumnFilter", "hide": true, "modal": {"disable": true}},
           {"field": "email", "headerName": "Email", "filter": "agTextColumnFilter"},

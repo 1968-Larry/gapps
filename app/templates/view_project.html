@@ -40,19 +40,19 @@
 					<div class="p-6 px-4 pb-2 border border-base-300 rounded-md">
 						<div class="flex flex-row gap-x-8">
 						<div class="flex flex-row gap-x-2">
-							<h3 :class="{'text-error': !selectedControl.is_applicable}" class="my-auto text-xl" x-text="selectedControl.progress_completed"></h3>
+							<h3 :class="{'text-error': !selectedControl?.is_applicable}" class="my-auto text-xl" x-text="selectedControl?.progress_completed"></h3>
 							<div class="flex justify-stretch space-x-1 my-auto">
-							  <template x-for="n in idToProgressBarMapping[selectedControl.id].total">
+							  <template x-for="n in (idToProgressBarMapping[selectedControl?.id]?.total ?? [])">
 								<div
 								  class="flex flex-col flex-nowrap justify-end w-0.5 h-6 bg-neutral-content opacity-90 rounded-full overflow-hidden relative"
 								  role="progressbar"
-								  :aria-valuenow="n <= idToProgressBarMapping[selectedControl.id].filledBars ? 100 : 0"
+								  :aria-valuenow="n <= idToProgressBarMapping[selectedControl?.id].filledBars ? 100 : 0"
 								  aria-valuemin="0"
 								  aria-valuemax="100">
 								  <div
 									class="rounded-full overflow-hidden"
-									:class="idToProgressBarMapping[selectedControl.id].color"
-									:style="`height: ${n <= idToProgressBarMapping[selectedControl.id].filledBars ? '100%' : '0%'}`">
+									:class="idToProgressBarMapping[selectedControl?.id].color"
+									:style="`height: ${n <= idToProgressBarMapping[selectedControl?.id].filledBars ? '100%' : '0%'}`">
 								  </div>
 								  <span class="text-xs absolute bottom-0 left-0 right-0 text-center"></span>
 								</div>
@@ -62,8 +62,8 @@
 
 						<div class="flex justify-between w-full pl-8 border-l">
 							<div class="flex flex-col">
-								<span class="subtitle text-xs !mb-0" x-text="'Control Title - '+selectedControl.ref_code"></span>
-								<span class="text-lg mr-4" x-text="selectedControl.name"></span>
+								<span class="subtitle text-xs !mb-0" x-text="'Control Title - '+selectedControl?.ref_code"></span>
+								<span class="text-lg mr-4" x-text="selectedControl?.name"></span>
 							</div>
 							<div class="flex flex-row gap-x-2">						
 								<div class="dropdown dropdown-end">
@@ -73,8 +73,8 @@
 										<button @click="tempDeletedControl=selectedControl;showControlDeletionModal=true" class="btn btn-xs text-error">Delete</button>
 									</li>
 									<li>
-										<button x-show="selectedControl.is_applicable" @click="setAsNotApplicable(selectedControl)" class="btn btn-xs text-error">Mark as Not Applicable</button>
-										<button x-show="!selectedControl.is_applicable" @click="setAsApplicable(selectedControl)" class="btn btn-xs text-success">Mark as Applicable</button>
+										<button x-show="selectedControl?.is_applicable" @click="setAsNotApplicable(selectedControl)" class="btn btn-xs text-error">Mark as Not Applicable</button>
+										<button x-show="!selectedControl?.is_applicable" @click="setAsApplicable(selectedControl)" class="btn btn-xs text-success">Mark as Applicable</button>
 									</li>
 									<li>
 										<button @click="changeControlTabInDrawer('subcontrols')" class="btn btn-xs">View Subcontrols</button>
@@ -89,7 +89,7 @@
 						</div>
 					</div>
 						<div class="grid grid-cols-12 my-6 gap-x-6">
-						<div :class="{'my-auto': projectData.auditors.length}" class="col-span-2 border-r border-base-100">
+						<div :class="{'my-auto': projectData.auditors?.length}" class="col-span-2 border-r border-base-100">
 							<div class="grid grid-cols-6 gap-x-4">
 								<div class="col-span-6 flex flex-col mb-1">
 									<div class="flex flex-row gap-x-2">
@@ -97,18 +97,18 @@
 										<i @click="openQuickHelp(1)" class="ti ti-question-mark subtitle text-sm hover:cursor-pointer hover:text-warning"></i>
 									</div>
 									<div class="inline-flex">
-										<span :class="{'text-warning': selectedControl.progress_completed<76 && selectedControl.progress_completed>29 , 'text-error': selectedControl.progress_completed<30, 'text-success': selectedControl.progress_completed>75}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block" x-text="selectedControl.status"></span>
+										<span :class="{'text-warning': selectedControl?.progress_completed<76 && selectedControl?.progress_completed>29 , 'text-error': selectedControl?.progress_completed<30, 'text-success': selectedControl?.progress_completed>75}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block" x-text="selectedControl?.status"></span>
 									</div>
 
 								</div>
-								<div x-show="projectData.auditors.length" class="col-span-6 flex flex-col">
+								<div x-show="projectData.auditors?.length" class="col-span-6 flex flex-col">
 									<div class="flex flex-row gap-x-2">
 										<span class="subtitle text-xs">Review Status</span>
 										<i @click="openQuickHelp(2)" class="ti ti-question-mark subtitle text-sm hover:cursor-pointer hover:text-warning"></i>
 									</div>
 									<div class="inline-flex">
-										<span @click="changeControlTabInDrawer('auditor')" x-show="isAuditor" :class="{'text-warning': selectedControl.review_status==='infosec action' , 'text-error': selectedControl.review_status==='ready for auditor', 'text-success': selectedControl.review_status==='complete'}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block hover:cursor-pointer hover:opacity-75" x-text="selectedControl.review_status"></span>
-										<span @click="changeControlTabInDrawer('auditor')" x-show="!isAuditor" :class="{'text-error': selectedControl.review_status==='infosec action' , 'text-warning': selectedControl.review_status==='ready for auditor', 'text-success': selectedControl.review_status==='complete'}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block hover:cursor-pointer hover:opacity-75" x-text="selectedControl.review_status"></span>
+										<span @click="changeControlTabInDrawer('auditor')" x-show="isAuditor" :class="{'text-warning': selectedControl?.review_status==='infosec action' , 'text-error': selectedControl?.review_status==='ready for auditor', 'text-success': selectedControl?.review_status==='complete'}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block hover:cursor-pointer hover:opacity-75" x-text="selectedControl?.review_status"></span>
+										<span @click="changeControlTabInDrawer('auditor')" x-show="!isAuditor" :class="{'text-error': selectedControl?.review_status==='infosec action' , 'text-warning': selectedControl?.review_status==='ready for auditor', 'text-success': selectedControl?.review_status==='complete'}" class="my-auto px-2 rounded-lg text-ss uppercase font-semibold bg-base-100 inline-block hover:cursor-pointer hover:opacity-75" x-text="selectedControl?.review_status"></span>
 									</div>
 								</div>
 							</div>
@@ -118,26 +118,26 @@
 							<div class="flex flex-col w-3/4">
 								<div class="flex justify-between">
 									<span class="subtitle text-xs">Controls Implemented</span>
-									<span class="subtitle text-xs" x-text="selectedControl.progress_implemented+'%'"></span>
+									<span class="subtitle text-xs" x-text="selectedControl?.progress_implemented+'%'"></span>
 								</div>
 								<progress
 									:class="{
-										'progress-error': selectedControl.progress_implemented < 30,
-										'progress-warning': selectedControl.progress_implemented >= 30 && selectedControl.progress_implemented < 75,
-										'progress-success': selectedControl.progress_implemented >= 75
+										'progress-error': selectedControl?.progress_implemented < 30,
+										'progress-warning': selectedControl?.progress_implemented >= 30 && selectedControl?.progress_implemented < 75,
+										'progress-success': selectedControl?.progress_implemented >= 75
 									}"
-									class="progress h-1" :value="selectedControl.progress_implemented+1" max="100"></progress>
+									class="progress h-1" :value="selectedControl?.progress_implemented+1" max="100"></progress>
 								<div class="flex justify-between mt-4">
 									<h3 class="subtitle text-xs">Evidence Collection</h3>
-									<h3 class="subtitle text-xs" x-text="selectedControl.progress_evidence+'%'"></h3>
+									<h3 class="subtitle text-xs" x-text="selectedControl?.progress_evidence+'%'"></h3>
 								</div>
 								<progress
 									:class="{
-										'progress-error': selectedControl.progress_evidence < 30,
-										'progress-warning': selectedControl.progress_evidence >= 30 && selectedControl.progress_evidence < 75,
-										'progress-success': selectedControl.progress_evidence >= 75
+										'progress-error': selectedControl?.progress_evidence < 30,
+										'progress-warning': selectedControl?.progress_evidence >= 30 && selectedControl?.progress_evidence < 75,
+										'progress-success': selectedControl?.progress_evidence >= 75
 									}"
-									class="progress h-1" :value="selectedControl.progress_evidence+1" max="100"></progress>
+									class="progress h-1" :value="selectedControl?.progress_evidence+1" max="100"></progress>
 							</div>
 						</div>
 						<div class="col-span-6">
@@ -147,10 +147,10 @@
 									 :class="expanded ? 'h-40' : 'h-12'"
 									 class="overflow-y-auto">
 
-									<span class="text-xs" x-text="expanded ? (selectedControl.description || selectedControl.name) : (selectedControl.description || selectedControl.name).slice(0, 90) + '...'"></span>
+									<span class="text-xs" x-text="expanded ? (selectedControl?.description || selectedControl?.name || '') : (selectedControl?.description || selectedControl?.name || '').slice(0, 90) + '...'"></span>
 
 									<button
-										x-show="(selectedControl.description || selectedControl.name).length > 90"
+										x-show="(selectedControl?.description || selectedControl?.name || '').length > 90"
 										@click="expanded = !expanded"
 										class="text-warning underline ml-2 text-xs">
 										<span x-text="expanded ? 'See less' : 'See more'"></span>
@@ -164,16 +164,16 @@
 					  <button @click="changeControlTabInDrawer('details')" :class="{'btn-active': activeSideTab==='details'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">Details</button>
 					  <button @click="changeControlTabInDrawer('subcontrols')" :class="{'btn-active': activeSideTab==='subcontrols'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 						  <div>
-							<i x-show="selectedControl.stats.subcontrols_complete===selectedControl.stats.applicable_subcontrols" class="ti ti-check text-success my-auto"></i>
-							<i x-show="selectedControl.stats.subcontrols_complete!==selectedControl.stats.applicable_subcontrols" class="ti ti-alert-triangle text-error my-auto"></i>
-							<span x-text="'Subcontrols ('+selectedControl.stats.subcontrols_complete+'/'+selectedControl.stats.applicable_subcontrols+')'"></span>
+							<i x-show="selectedControl?.stats.subcontrols_complete===selectedControl?.stats.applicable_subcontrols" class="ti ti-check text-success my-auto"></i>
+							<i x-show="selectedControl?.stats.subcontrols_complete!==selectedControl?.stats.applicable_subcontrols" class="ti ti-alert-triangle text-error my-auto"></i>
+							<span x-text="'Subcontrols ('+selectedControl?.stats.subcontrols_complete+'/'+selectedControl?.stats.applicable_subcontrols+')'"></span>
 						  </div>
 					  </button>
 					  <button @click="changeControlTabInDrawer('auditor')" :class="{'btn-active': activeSideTab==='auditor'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 						  <div>
-							<i x-show="selectedControl.review_complete" class="ti ti-check text-success my-auto"></i>
-							<i x-show="selectedControl.stats.feedback && !selectedControl.review_complete" class="ti ti-alert-triangle text-warning my-auto"></i>
-							<span x-text="'Auditor Review ('+selectedControl.stats.feedback+')'"></span>
+							<i x-show="selectedControl?.review_complete" class="ti ti-check text-success my-auto"></i>
+							<i x-show="selectedControl?.stats.feedback && !selectedControl?.review_complete" class="ti ti-alert-triangle text-warning my-auto"></i>
+							<span x-text="'Auditor Review ('+selectedControl?.stats.feedback+')'"></span>
 						  </div>
 					  </button>
 					  <button @click="changeControlTabInDrawer('comments'); scrollToRecentMessagesInDrawer()" :class="{'btn-active': activeSideTab==='comments'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100" x-text="'Comments ('+messagesForControl.length+')'"></button>
@@ -185,19 +185,19 @@
 						<div class="flex flex-row gap-x-4">
 						<div class="flex flex-row gap-x-2 my-auto">
 							<button @click="closeSubControlInDrawer" data-tip="Back to control" class="btn btn-sm btn-ghost tooltip tooltip-right"><i class="ti ti-arrow-left text-2xl"></i></button>
-							<h3 :class="{'text-error': !selectedSubControl.is_applicable}" class="my-auto text-xl" x-text="selectedSubControl.progress_completed"></h3>
+							<h3 :class="{'text-error': !selectedSubControl?.is_applicable}" class="my-auto text-xl" x-text="selectedSubControl?.progress_completed"></h3>
 							<div class="flex justify-stretch space-x-1 my-auto">
-							  <template x-for="n in idToProgressBarMapping[selectedSubControl.id+'_progress'].total">
+							  <template x-for="n in (idToProgressBarMapping[selectedSubControl?.id+'_progress']?.total ?? [])">
 								<div
 								  class="flex flex-col flex-nowrap justify-end w-0.5 h-6 bg-neutral-content opacity-90 rounded-full overflow-hidden relative"
 								  role="progressbar"
-								  :aria-valuenow="n <= idToProgressBarMapping[selectedSubControl.id+'_progress'].filledBars ? 100 : 0"
+								  :aria-valuenow="n <= idToProgressBarMapping[selectedSubControl?.id+'_progress'].filledBars ? 100 : 0"
 								  aria-valuemin="0"
 								  aria-valuemax="100">
 								  <div
 									class="rounded-full overflow-hidden"
-									:class="idToProgressBarMapping[selectedSubControl.id+'_progress'].color"
-									:style="`height: ${n <= idToProgressBarMapping[selectedSubControl.id+'_progress'].filledBars ? '100%' : '0%'}`">
+									:class="idToProgressBarMapping[selectedSubControl?.id+'_progress'].color"
+									:style="`height: ${n <= idToProgressBarMapping[selectedSubControl?.id+'_progress'].filledBars ? '100%' : '0%'}`">
 								  </div>
 								  <span class="text-xs absolute bottom-0 left-0 right-0 text-center"></span>
 								</div>
@@ -207,25 +207,25 @@
 
 						<div class="flex justify-between w-full pl-4 border-l">
 							<div class="flex flex-col pr-4">
-								<span class="subtitle text-xs !mb-0" x-text="'SubControl Title - '+selectedSubControl.ref_code.toUpperCase()"></span>
-								<span class="text-lg" x-text="selectedSubControl.name"></span>
+								<span class="subtitle text-xs !mb-0" x-text="'SubControl Title - '+selectedSubControl?.ref_code.toUpperCase()"></span>
+								<span class="text-lg" x-text="selectedSubControl?.name"></span>
 							</div>
 							<div class="flex flex-row gap-x-2">
 								<div class="dropdown">
 								  <div tabindex="0" role="button" class="btn btn-sm btn-primary opacity-80">Actions</div>
 								  <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
 									<li>
-										<button x-show="selectedSubControl.is_applicable" @click="setSubControlAsNotApplicable(selectedSubControl)" class="btn btn-xs text-error">Mark as Not Applicable</button>
-										<button x-show="!selectedSubControl.is_applicable" @click="setSubControlAsApplicable(selectedSubControl)" class="btn btn-xs text-success">Mark as Applicable</button>
+										<button x-show="selectedSubControl?.is_applicable" @click="setSubControlAsNotApplicable(selectedSubControl)" class="btn btn-xs text-error">Mark as Not Applicable</button>
+										<button x-show="!selectedSubControl?.is_applicable" @click="setSubControlAsApplicable(selectedSubControl)" class="btn btn-xs text-success">Mark as Applicable</button>
 									</li>
 								  </ul>
 								</div>
 								<div class="dropdown dropdown-bottom dropdown-end">
 								  <div tabindex="0" role="button" class="btn btn-sm opacity-80">Subcontrols</div>
 								  <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-96 p-2 shadow">
-									<template x-for="subcontrol in selectedControl.subcontrols">
+									<template x-for="subcontrol in (selectedControl?.subcontrols ?? [])">
 										<li @click="openSubControlInDrawer(subcontrol)">
-											<div :class="{'opacity-50': selectedSubControl.id===subcontrol.id}" class="flex justify-between">
+											<div :class="{'opacity-50': selectedSubControl?.id===subcontrol.id}" class="flex justify-between">
 												<div x-show="subcontrol.is_applicable" class="flex flex-row gap-x-2 w-1/2">
 													<span x-text="subcontrol.progress_completed"></span>
 													<progress class="progress w-full h-1 my-auto" :value="subcontrol.progress_completed+1" max="100"></progress>
@@ -250,10 +250,10 @@
 									<div class="col-span-6 flex flex-col mb-1">
 										<span class="subtitle text-xs"><i class="ti ti-sun mr-1 my-auto"></i>Subcontrol Status</span>
 										<div class="inline-flex">
-											<span x-text="selectedSubControl.completion_status"></span>
+											<span x-text="selectedSubControl?.completion_status"></span>
 										</div>
-										<span x-show="selectedSubControl.planned_end" class="text-xs mt-1" :class="selectedSubControl.is_overdue ? 'text-error' : 'opacity-70'">
-											<i class="ti ti-calendar-event"></i> <span x-text="(selectedSubControl.is_overdue ? 'Overdue, planned end ' : 'Planned end ') + selectedSubControl.planned_end"></span>
+										<span x-show="selectedSubControl?.planned_end" class="text-xs mt-1" :class="selectedSubControl?.is_overdue ? 'text-error' : 'opacity-70'">
+											<i class="ti ti-calendar-event"></i> <span x-text="(selectedSubControl?.is_overdue ? 'Overdue, planned end ' : 'Planned end ') + selectedSubControl?.planned_end"></span>
 										</span>
 									</div>
 								</div>
@@ -262,22 +262,22 @@
 								<div class="flex flex-col w-3/4">
 									<div class="flex justify-between">
 										<span class="subtitle text-xs">Implemented</span>
-										<span class="subtitle text-xs" x-text="selectedSubControl.implemented+'%'"></span>
+										<span class="subtitle text-xs" x-text="selectedSubControl?.implemented+'%'"></span>
 									</div>
 									<progress
 										:class="{
-											'progress-error': selectedSubControl.implemented < 30,
-											'progress-warning': selectedSubControl.implemented >= 30 && selectedSubControl.implemented < 75,
-											'progress-success': selectedSubControl.implemented >= 75
+											'progress-error': selectedSubControl?.implemented < 30,
+											'progress-warning': selectedSubControl?.implemented >= 30 && selectedSubControl?.implemented < 75,
+											'progress-success': selectedSubControl?.implemented >= 75
 										}"
-										class="progress h-1" :value="selectedSubControl.implemented+1" max="100"></progress>
+										class="progress h-1" :value="selectedSubControl?.implemented+1" max="100"></progress>
 									<div class="flex justify-between mt-4">
 										<h3 class="subtitle text-xs">Evidence Attached</h3>
-										<h3 x-show="selectedSubControl.has_evidence" class="subtitle text-xs">100%</h3>
-										<h3 x-show="!selectedSubControl.has_evidence" class="subtitle text-xs">0%</h3>
+										<h3 x-show="selectedSubControl?.has_evidence" class="subtitle text-xs">100%</h3>
+										<h3 x-show="!selectedSubControl?.has_evidence" class="subtitle text-xs">0%</h3>
 									</div>
-									<progress x-show="selectedSubControl.has_evidence" class="progress h-1 progress-success" value="100" max="100"></progress>
-									<progress x-show="!selectedSubControl.has_evidence" class="progress h-1 progress-error" value="1" max="100"></progress>
+									<progress x-show="selectedSubControl?.has_evidence" class="progress h-1 progress-success" value="100" max="100"></progress>
+									<progress x-show="!selectedSubControl?.has_evidence" class="progress h-1 progress-error" value="1" max="100"></progress>
 								</div>
 							</div>
 							<div class="col-span-5">
@@ -287,10 +287,10 @@
 										 :class="expanded ? 'h-40' : 'h-12'"
 										 class="overflow-y-auto">
 
-										<span class="text-xs" x-text="expanded ? (selectedControl.description || selectedSubControl.name) : (selectedControl.description || selectedSubControl.name).slice(0, 90) + '...'"></span>
+										<span class="text-xs" x-text="expanded ? (selectedControl?.description || selectedSubControl?.name || '') : (selectedControl?.description || selectedSubControl?.name || '').slice(0, 90) + '...'"></span>
 
 										<button
-											x-show="(selectedControl.description || selectedSubControl.name).length > 100"
+											x-show="(selectedControl?.description || selectedSubControl?.name || '').length > 100"
 											@click="expanded = !expanded"
 											class="text-warning underline ml-2 text-xs">
 											<span x-text="expanded ? 'See less' : 'See more'"></span>
@@ -305,17 +305,17 @@
 						<div role="tablist" class="tabs gap-x-2">
 						  <button @click="closeSubControlInDrawer" role="tab" class="text-sm tab subtitle hover:opacity-50"><i class="ti ti-arrow-left text-xg mr-2 my-auto"></i>Other subcontrols</button>
 						  <button @click="changeSubControlTabInDrawer('details')" :class="{'btn-active': activeSubSideTab==='details'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">Details</button>
-						  <button x-show="!selectedSubControl.has_evidence" @click="changeSubControlTabInDrawer('evidence')" :class="{'btn-active': activeSubSideTab==='evidence'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+						  <button x-show="!selectedSubControl?.has_evidence" @click="changeSubControlTabInDrawer('evidence')" :class="{'btn-active': activeSubSideTab==='evidence'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							<i class="ti ti-x text-error my-auto text-lg mr-1"></i>Evidence
 						  </button>
-						  <button x-show="selectedSubControl.has_evidence" @click="changeSubControlTabInDrawer('evidence')" :class="{'btn-active': activeSubSideTab==='evidence'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
-							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Evidence ('+selectedSubControl.evidence.length+')'"></span>
+						  <button x-show="selectedSubControl?.has_evidence" @click="changeSubControlTabInDrawer('evidence')" :class="{'btn-active': activeSubSideTab==='evidence'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Evidence ('+selectedSubControl?.evidence.length+')'"></span>
 						  </button>
-						  <button x-show="!selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+						  <button x-show="!selectedSubControl?.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							<i class="ti ti-x text-error my-auto text-lg mr-1"></i>Risks
 						  </button>
-						  <button x-show="selectedSubControl.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
-							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Risks ('+selectedSubControl.risks.length+')'"></span>
+						  <button x-show="selectedSubControl?.has_risks" @click="changeSubControlTabInDrawer('risks')" :class="{'btn-active': activeSubSideTab==='risks'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
+							<i class="ti ti-check text-success my-auto text-lg mr-1"></i><span x-text="'Risks ('+selectedSubControl?.risks.length+')'"></span>
 						  </button>
 						  <button @click="changeSubControlTabInDrawer('exceptions')" :class="{'btn-active': activeSubSideTab==='exceptions'}" role="tab" class="tab btn btn-sm btn-ghost bg-base-100">
 							Exceptions<span x-show="selectedSubControl?.exceptions && selectedSubControl?.exceptions.length" class="ml-1" :class="{'text-success': selectedSubControl?.active_exceptions}" x-text="'(' + (selectedSubControl?.exceptions || []).length + ')'"></span>
@@ -334,7 +334,7 @@
 					<div x-show="activeSideTab==='details'" class="card">
 						<div class="grid grid-cols-12 gap-4">
 						<div class="col-span-full">
-							<div x-show="!selectedControl.is_applicable" role="alert" class="alert text-error bg-base-300">
+							<div x-show="!selectedControl?.is_applicable" role="alert" class="alert text-error bg-base-300">
 								<i class="ti ti-x text-lg"></i>
 								<span class="text-sm">
 									This control has been marked as 'Not Applicable'. There are action items here unless the control is set as Applicable.
@@ -346,10 +346,10 @@
 								<div class="card-title">Completion %</div>
 								<figure>
 									<div
-									  :class="{'text-warning': selectedControl.progress_completed<76 && selectedControl.progress_completed>49 , 'text-error': selectedControl.progress_completed<50, 'text-success': selectedControl.progress_completed>75}"
+									  :class="{'text-warning': selectedControl?.progress_completed<76 && selectedControl?.progress_completed>49 , 'text-error': selectedControl?.progress_completed<50, 'text-success': selectedControl?.progress_completed>75}"
 									  class="radial-progress text-sm font-semibold my-2 border-base-100 border-2 mt-6"
-									  :style="'--value:' + selectedControl.progress_completed + '; --size: 12rem; --thickness: 2px;'"
-									  role="progressbar" x-text="selectedControl.progress_completed+'%'">
+									  :style="'--value:' + selectedControl?.progress_completed + '; --size: 12rem; --thickness: 2px;'"
+									  role="progressbar" x-text="selectedControl?.progress_completed+'%'">
 									</div>
 								</figure>
 							</div>
@@ -359,52 +359,52 @@
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Status</h4>
 									<div class="flex flex-row">
-										<i :class="{'ti-progress-alert text-warning':selectedControl.status === 'not started', 'ti-toggle-left text-error':selectedControl.status === 'not applicable','ti-progress-bolt text-warning':selectedControl.status === 'in progress','ti-check text-success':selectedControl.status === 'complete' }" class="ti mr-2 my-auto text-lg"></i>
-										<p class="capitalize my-auto" x-text="selectedControl.status"></p>
+										<i :class="{'ti-progress-alert text-warning':selectedControl?.status === 'not started', 'ti-toggle-left text-error':selectedControl?.status === 'not applicable','ti-progress-bolt text-warning':selectedControl?.status === 'in progress','ti-check text-success':selectedControl?.status === 'complete' }" class="ti mr-2 my-auto text-lg"></i>
+										<p class="capitalize my-auto" x-text="selectedControl?.status"></p>
 									</div>
 								</div>
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Reference Code</h4>
-									<p x-text="selectedControl.ref_code"></p>
+									<p x-text="selectedControl?.ref_code"></p>
 								</div>
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Applicable</h4>
 									<div class="flex flex-row">
-										<input x-show="selectedControl.is_applicable" x-model="selectedControl.is_applicable" @change="setAsNotApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl.is_applicable}" class="toggle toggle-sm" :checked="selectedControl.is_applicable" />
-										<input x-show="!selectedControl.is_applicable" x-model="selectedControl.is_applicable" @change="setAsApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl.is_applicable}" class="toggle toggle-sm" :checked="selectedControl.is_applicable" />
+										<input x-show="selectedControl?.is_applicable" x-model="selectedControl.is_applicable" @change="setAsNotApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
+										<input x-show="!selectedControl?.is_applicable" x-model="selectedControl.is_applicable" @change="setAsApplicable(selectedControl)" type="checkbox" :class="{'toggle-success':selectedControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedControl?.is_applicable" />
 									</div>
 								</div>
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Completed Subcontrols</h4>
 									<div class="flex flex-row gap-x-2">
 										<i :class="{
-										  'ti-check text-success': selectedControl.stats['subcontrols_complete'] >= selectedControl.stats['applicable_subcontrols'],
-										  'ti-alert-triangle text-error': selectedControl.stats['subcontrols_complete'] < selectedControl.stats['applicable_subcontrols']
+										  'ti-check text-success': selectedControl?.stats['subcontrols_complete'] >= selectedControl?.stats['applicable_subcontrols'],
+										  'ti-alert-triangle text-error': selectedControl?.stats['subcontrols_complete'] < selectedControl?.stats['applicable_subcontrols']
 										}"
 										class="ti my-auto"></i>
-										<span class="underline underline-offset-4 hover:cursor-pointer" @click="changeControlTab('subcontrols')" x-text="selectedControl.stats['subcontrols_complete']+'/'+selectedControl.stats['applicable_subcontrols']"></span>
+										<span class="underline underline-offset-4 hover:cursor-pointer" @click="changeControlTab('subcontrols')" x-text="selectedControl?.stats['subcontrols_complete']+'/'+selectedControl?.stats['applicable_subcontrols']"></span>
 										<button @click="changeControlTabInDrawer('subcontrols')" class="btn btn-xs bg-base-100">View<i class="ti ti-arrow-right"></i></button>
 
 									</div>
 								</div>
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Auditor Review Status<span data-tip="The auditor will review the control and update the status" class="tooltip ml-2 hover:opacity-75"><i class="ti ti-question-mark"></i></span></h4>
-									<div x-show="projectData.auditors.length" class="flex flex-row gap-x-2">
+									<div x-show="projectData.auditors?.length" class="flex flex-row gap-x-2">
 										<div x-show="isAuditor" class="my-auto">
-											<i x-show="selectedControl.review_status === 'infosec action'" class="ti ti-progress text-lg text-warning"></i>
-											<i x-show="selectedControl.review_status === 'ready for auditor'" class="ti ti-spy text-lg text-error"></i>
-											<i x-show="selectedControl.review_status === 'complete'" class="ti ti-check text-success text-lg "></i>
+											<i x-show="selectedControl?.review_status === 'infosec action'" class="ti ti-progress text-lg text-warning"></i>
+											<i x-show="selectedControl?.review_status === 'ready for auditor'" class="ti ti-spy text-lg text-error"></i>
+											<i x-show="selectedControl?.review_status === 'complete'" class="ti ti-check text-success text-lg "></i>
 										</div>
 										<div x-show="!isAuditor" class="my-auto">
-											<i x-show="selectedControl.review_status === 'infosec action'" class="ti ti-progress text-lg text-warning"></i>
-											<i x-show="selectedControl.review_status === 'ready for auditor'" class="ti ti-spy text-warning text-lg"></i>
-											<i x-show="selectedControl.review_status === 'complete'" class="ti ti-check text-success text-lg "></i>
+											<i x-show="selectedControl?.review_status === 'infosec action'" class="ti ti-progress text-lg text-warning"></i>
+											<i x-show="selectedControl?.review_status === 'ready for auditor'" class="ti ti-spy text-warning text-lg"></i>
+											<i x-show="selectedControl?.review_status === 'complete'" class="ti ti-check text-success text-lg "></i>
 										</div>
-										<span class="capitalize my-auto" x-text="selectedControl.review_status"></span>
+										<span class="capitalize my-auto" x-text="selectedControl?.review_status"></span>
 										<button x-on:click="changeControlTab('feedback')" class="btn btn-xs bg-base-100">View<i class="ti ti-arrow-right"></i></button>
 									</div>
-									<div x-show="!projectData.auditors.length" class="flex flex-row gap-x-2">
-										<span class="my-auto" x-show="!projectData.auditors.length">No Auditor</span>
+									<div x-show="!projectData.auditors?.length" class="flex flex-row gap-x-2">
+										<span class="my-auto" x-show="!projectData.auditors?.length">No Auditor</span>
 										<button @click="closeControlDrawer;switchTab({'tab': 'users'})" class="btn btn-xs text-warning bg-base-100">Update<i class="ti ti-arrow-right"></i></button>
 									</div>
 
@@ -412,7 +412,7 @@
 								<div class="col-span-2">
 									<h4 class="subtitle text-sm">Tags</h4>
 									<div class="flex flex-wrap gap-2">
-										<template x-for="tag in selectedControl.tags">
+										<template x-for="tag in (selectedControl?.tags ?? [])">
 											<div class="pill bg-base-300 my-auto hover:cursor-pointer">
 												<span class="text-ss" x-text="tag.name"></span>
 											</div>
@@ -421,8 +421,8 @@
 								</div>
 								<div class="col-span-6">
 									<h4 class="my-2 subtitle text-sm">Recommended Guidance</h4>
-									<span x-show="selectedControl.guidance" x-text="selectedControl.guidance"></span>
-									<span x-show="!selectedControl.guidance">This control does not contain any guidance. It is recommended to review and address the subcontrols.</span>
+									<span x-show="selectedControl?.guidance" x-text="selectedControl?.guidance"></span>
+									<span x-show="!selectedControl?.guidance">This control does not contain any guidance. It is recommended to review and address the subcontrols.</span>
 								</div>
 							</div>
 						</div>
@@ -430,7 +430,7 @@
 					</div>
 					</div>
 					<div x-show="activeSideTab==='subcontrols'" class="card">
-					  <div x-show="selectedControl && selectedControl.is_custom" class="flex justify-end gap-x-2 mb-2">
+					  <div x-show="selectedControl && selectedControl?.is_custom" class="flex justify-end gap-x-2 mb-2">
 						<button @click="openEditCustom('control', selectedControl)" class="btn btn-xs btn-ghost"><i class="ti ti-pencil"></i>Edit control</button>
 						<button @click="showCreateSubControlModal=true" class="btn btn-xs btn-primary"><i class="ti ti-plus"></i>Add subcontrol</button>
 					  </div>
@@ -451,11 +451,11 @@
 						  </tr>
 						</thead>
 						<tbody class="bg-base-300">
-							<template x-for="subcontrol in selectedControl.subcontrols" :key="subcontrol.id">
+							<template x-for="subcontrol in (selectedControl?.subcontrols ?? [])" :key="subcontrol.id">
 							  <tr>
 								<td class="whitespace-nowrap">
 									<button @click="openSubControlInDrawer(subcontrol)" class="btn btn-sm btn-ghost"><i class="ti ti-maximize text-lg"></i></button>
-									<button x-show="selectedControl && selectedControl.is_custom" @click="openEditCustom('subcontrol', subcontrol)" title="Edit name / reference code" class="btn btn-sm btn-ghost"><i class="ti ti-pencil text-lg"></i></button>
+									<button x-show="selectedControl && selectedControl?.is_custom" @click="openEditCustom('subcontrol', subcontrol)" title="Edit name / reference code" class="btn btn-sm btn-ghost"><i class="ti ti-pencil text-lg"></i></button>
 								</td>
 								<td>
 									<div x-show="subcontrol.is_complete && subcontrol.is_applicable" class="text-xs text-success">Complete</div>
@@ -471,7 +471,7 @@
 										<span class="text-xs font-semibold" x-text="subcontrol.implemented"></span>
 										<div class="flex flex-row gap-x-0.5">
 										  <div class="flex space-x-1 my-auto">
-											  <template x-for="n in idToProgressBarMapping[subcontrol.id].total">
+											  <template x-for="n in idToProgressBarMapping[subcontrol.id]?.total">
 												<div
 												  class="flex flex-col flex-nowrap justify-end w-0.5 h-3 bg-neutral-content opacity-90 rounded-full overflow-hidden relative"
 												  role="progressbar"
@@ -516,56 +516,56 @@
 					<div x-show="activeSideTab==='auditor'" class="card">
 
 						<div class="grid grid-cols-12 gap-x-4">
-							<div x-show="projectData.auditors.length > 0" class="col-span-3 p-4 border-r border-base-100">
+							<div x-show="projectData.auditors?.length > 0" class="col-span-3 p-4 border-r border-base-100">
 								<span class="text-lg mb-2"><i class="ti ti-cardboards mr-2"></i>Review Status</span>
-								<div x-show="selectedControl.stats.feedback>0">
-									<div x-show="selectedControl.review_status === 'infosec action'" role="alert" class="alert bg-base-100 my-2 text-warning">
+								<div x-show="selectedControl?.stats.feedback>0">
+									<div x-show="selectedControl?.review_status === 'infosec action'" role="alert" class="alert bg-base-100 my-2 text-warning">
 										<span class="text-sm">
 											Waiting on the InfoSec team to address the feedback.
 										</span>
 									</div>
-									<div x-show="selectedControl.review_status === 'ready for auditor'" role="alert" class="alert bg-base-100 my-2 text-warning">
+									<div x-show="selectedControl?.review_status === 'ready for auditor'" role="alert" class="alert bg-base-100 my-2 text-warning">
 										<span class="text-sm">
 											Waiting on the Auditor to review the responses.
 										</span>
 									</div>
-									<div x-show="selectedControl.review_status === 'complete'" role="alert" class="alert my-2 bg-success">
+									<div x-show="selectedControl?.review_status === 'complete'" role="alert" class="alert my-2 bg-success">
 										<span class="text-sm">
 											Review is complete. There are no other action items.
 										</span>
 									</div>
-									<button @click="updateReviewStatus('ready for auditor')" x-show="!isAuditor && selectedControl.review_status === 'infosec action'" class="btn btn-block btn-sm btn-success">Ready for Review</button>
+									<button @click="updateReviewStatus('ready for auditor')" x-show="!isAuditor && selectedControl?.review_status === 'infosec action'" class="btn btn-block btn-sm btn-success">Ready for Review</button>
 									<div x-show="isAuditor" class="flex flex-col gap-y-4">
-										<button :disabled="selectedControl.review_status === 'infosec action'" @click="openReviewModal('infosec action')" class="btn btn-sm btn-warning">Request InfoSec Action</button>
-										<button :disabled="selectedControl.review_status === 'complete'" @click="openReviewModal('complete')" :disabled="selectedControl.review_status === 'complete" class="btn btn-sm btn-success">Mark as Complete</button>
+										<button :disabled="selectedControl?.review_status === 'infosec action'" @click="openReviewModal('infosec action')" class="btn btn-sm btn-warning">Request InfoSec Action</button>
+										<button :disabled="selectedControl?.review_status === 'complete'" @click="openReviewModal('complete')" class="btn btn-sm btn-success">Mark as Complete</button>
 									</div>
 								</div>
-								<div class="mt-4" x-show="selectedControl.stats.feedback===0">
-									<div x-show="selectedControl.review_status === 'infosec action'" role="alert" class="alert bg-base-100 my-2 text-warning">
+								<div class="mt-4" x-show="selectedControl?.stats.feedback===0">
+									<div x-show="selectedControl?.review_status === 'infosec action'" role="alert" class="alert bg-base-100 my-2 text-warning">
 										<span class="text-sm">
 											Waiting on the InfoSec team change the status.
 										</span>
 									</div>
-									<div x-show="selectedControl.review_status === 'ready for auditor'" role="alert" class="alert bg-base-100 my-2 text-warning">
+									<div x-show="selectedControl?.review_status === 'ready for auditor'" role="alert" class="alert bg-base-100 my-2 text-warning">
 										<span class="text-sm">
 											Waiting on the Auditor to review the control.
 										</span>
 									</div>
-									<div x-show="selectedControl.review_status === 'complete'" role="alert" class="alert my-2 bg-base-100 text-success">
+									<div x-show="selectedControl?.review_status === 'complete'" role="alert" class="alert my-2 bg-base-100 text-success">
 										<span class="text-sm">
 											Review is complete. There are no other action items.
 										</span>
 									</div>
-									<button @click="updateReviewStatus('ready for auditor')" x-show="!isAuditor && selectedControl.review_status === 'infosec action'" class="btn btn-block btn-sm btn-success">Ready for Review</button>
+									<button @click="updateReviewStatus('ready for auditor')" x-show="!isAuditor && selectedControl?.review_status === 'infosec action'" class="btn btn-block btn-sm btn-success">Ready for Review</button>
 									<div x-show="isAuditor" class="flex flex-col gap-y-4">
-										<button :disabled="selectedControl.review_status === 'infosec action'" @click="openReviewModal('infosec action')" class="btn btn-sm btn-warning">Request InfoSec Action</button>
-										<button :disabled="selectedControl.review_status === 'complete'" @click="openReviewModal('complete')" :disabled="selectedControl.review_status === 'complete" class="btn btn-sm btn-success">Mark as Complete</button>
+										<button :disabled="selectedControl?.review_status === 'infosec action'" @click="openReviewModal('infosec action')" class="btn btn-sm btn-warning">Request InfoSec Action</button>
+										<button :disabled="selectedControl?.review_status === 'complete'" @click="openReviewModal('complete')" class="btn btn-sm btn-success">Mark as Complete</button>
 									</div>
 								</div>
 							</div>
-							<div :class="{'col-span-9': projectData.auditors.length > 0, 'col-span-12':projectData.auditors.length === 0}">
+							<div :class="{'col-span-9': projectData.auditors?.length > 0, 'col-span-12':projectData.auditors?.length === 0}">
 								<div class="min-h-screen overflow-auto">
-									<table x-show="selectedControl.stats.feedback>0" class="table">
+									<table x-show="selectedControl?.stats.feedback>0" class="table">
 										<thead>
 										  <tr>
 											<th x-show="!isAuditor" class="bg-base-300 rounded-tl-lg p-6 w-1">Open</th>
@@ -576,7 +576,7 @@
 										  </tr>
 										</thead>
 										<tbody class="bg-base-300">
-											<template x-for="feedback in selectedControl.feedback">
+											<template x-for="feedback in (selectedControl?.feedback ?? [])">
 											  <tr>
 												  <td><button @click="selectedFeedback=feedback;showFeedbackModal=true" class="btn btn-sm btn-ghost"><i class="ti ti-maximize text-lg"></i></button></td>
 												  <td class="capitalize" x-text="feedback.title"></td>
@@ -586,10 +586,10 @@
 										</tbody>
 									</table>
 
-							<div x-show="selectedControl.stats.feedback<1" class="overflow-x-auto">
+							<div x-show="selectedControl?.stats.feedback<1" class="overflow-x-auto">
 								<div class="hero mt-16">
 								  <div class="hero-content text-center">
-									<div x-show="!isAuditor && projectData.auditors.length" class="max-w-full">
+									<div x-show="!isAuditor && projectData.auditors?.length" class="max-w-full">
 									  <h1 class="text-xl font-semibold">No Feedback</h1>
 									  <p class="py-2 px-10">The auditor has not created any feedback. There are no action items at this time.</p>
 									</div>
@@ -598,7 +598,7 @@
 									  <p class="py-2 px-10">You have not created any feedback for the InfoSec team. Create feedback to provide them with remediation or action items.</p>
 									  <button @click="addFeedbackModal=true" class="btn btn-sm btn-success">Create Feedback</button>
 									</div>
-									<div x-show="!projectData.auditors.length" class="max-w-full">
+									<div x-show="!projectData.auditors?.length" class="max-w-full">
 									  <h1 class="text-xl font-semibold">No Auditors</h1>
 									  <p class="py-2 px-10">You have not added an Auditor to this project. Please add one if you would like to utilize Auditor Reviews.</p>
 									  <button @click="closeControlDrawer;switchTab({tab: 'users'})" class="btn btn-sm btn-primary">Add Auditor</button>
@@ -649,23 +649,23 @@
 									<div class="card-title">Completion %</div>
 									<figure>
 										<div
-										  :class="{'text-warning': selectedSubControl.progress_completed<76 && selectedSubControl.progress_completed>49 , 'text-error': selectedSubControl.progress_completed<50, 'text-success': selectedSubControl.progress_completed>75}"
+										  :class="{'text-warning': selectedSubControl?.progress_completed<76 && selectedSubControl?.progress_completed>49 , 'text-error': selectedSubControl?.progress_completed<50, 'text-success': selectedSubControl?.progress_completed>75}"
 										  class="radial-progress text-sm font-semibold my-2 border-base-100 border-2 mt-6"
-										  :style="'--value:' + selectedSubControl.progress_completed + '; --size: 12rem; --thickness: 2px;'"
-										  role="progressbar" x-text="selectedSubControl.progress_completed+'%'">
+										  :style="'--value:' + selectedSubControl?.progress_completed + '; --size: 12rem; --thickness: 2px;'"
+										  role="progressbar" x-text="selectedSubControl?.progress_completed+'%'">
 										</div>
 									</figure>
 								</div>
 
 							</div>
 							<div class="col-span-7">
-								<div x-show="!selectedSubControl.is_applicable" role="alert" class="alert bg-base-300 mb-2 text-error">
+								<div x-show="!selectedSubControl?.is_applicable" role="alert" class="alert bg-base-300 mb-2 text-error">
 									<i class="ti ti-x text-lg"></i>
 									<span class="text-sm">
 										This subcontrol has been marked as 'Not Applicable'. There are action items here.
 									</span>
 								</div>
-								<div x-show="selectedSubControl.is_applicable && selectedSubControl.is_complete" role="alert" class="alert bg-base-300 text-success mb-2">
+								<div x-show="selectedSubControl?.is_applicable && selectedSubControl?.is_complete" role="alert" class="alert bg-base-300 text-success mb-2">
 									<i class="ti ti-check text-lg"></i>
 									<span class="text-sm">
 										This subcontrol is complete. There are no other action items.
@@ -674,36 +674,36 @@
 								<div class="grid grid-cols-6 gap-4">
 									<div class="col-span-6">
 										<h4 class="subtitle text-sm">Subcontrol Guidance</h4>
-										<p x-text="selectedSubControl.guidance"></p>
+										<p x-text="selectedSubControl?.guidance"></p>
 									</div>
 									<div class="col-span-4">
 										<h4 class="subtitle text-sm">Status</h4>
 										<div class="flex flex-row">
-											<p class="my-auto" x-text="selectedSubControl.completion_status"></p>
+											<p class="my-auto" x-text="selectedSubControl?.completion_status"></p>
 										</div>
 									</div>
 									<div class="col-span-2">
 										<h4 class="subtitle text-sm">Is Applicable</h4>
 										<div class="flex flex-row">
-											<input x-model="selectedSubControl.is_applicable" @change="updateSubcontrol(selectedSubControl)" type="checkbox" :class="{'toggle-success':selectedSubControl.is_applicable}" class="toggle toggle-sm" :checked="selectedSubControl.is_applicable" />
+											<input x-model="selectedSubControl.is_applicable" @change="updateSubcontrol(selectedSubControl)" type="checkbox" :class="{'toggle-success':selectedSubControl?.is_applicable}" class="toggle toggle-sm" :checked="selectedSubControl?.is_applicable" />
 										</div>
 									</div>
 									 <div class="col-span-3">
-										<h4 class="subtitle text-sm"><i x-show="selectedSubControl.implemented===0" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Progress</h4>
+										<h4 class="subtitle text-sm"><i x-show="selectedSubControl?.implemented===0" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Progress</h4>
 										<select @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.implemented" class="select w-full select-sm">
-										  <option value="0" :selected="parseInt(selectedSubControl.implemented) === 0">Not Implemented</option>
-										  <option value="50" :selected="parseInt(selectedSubControl.implemented) > 0 && parseInt(selectedSubControl.implemented) < 100">Partially Implemented</option>
-										  <option value="100" :selected="parseInt(selectedSubControl.implemented) === 100">Fully Implemented</option>
+										  <option value="0" :selected="parseInt(selectedSubControl?.implemented) === 0">Not Implemented</option>
+										  <option value="50" :selected="parseInt(selectedSubControl?.implemented) > 0 && parseInt(selectedSubControl?.implemented) < 100">Partially Implemented</option>
+										  <option value="100" :selected="parseInt(selectedSubControl?.implemented) === 100">Fully Implemented</option>
 										</select>
 									</div>
 									<div class="col-span-3">
 										<div class="flex flex-row">
-											<h4 class="subtitle text-sm"><i x-show="!selectedSubControl.owner_id" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Owner</h4>
+											<h4 class="subtitle text-sm"><i x-show="!selectedSubControl?.owner_id" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Owner</h4>
 										</div>
 										<select @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.owner_id" class="select select-sm w-full">
-											<option value="" :selected="selectedSubControl.owner === 'Missing Owner'">Missing Owner</option>
+											<option value="" :selected="selectedSubControl?.owner === 'Missing Owner'">Missing Owner</option>
 											<template  x-for="user in projectUsers">
-												<option :value="user.id" x-text="user.email" :selected="selectedSubControl.owner === user.email"></option>
+												<option :value="user.id" x-text="user.email" :selected="selectedSubControl?.owner === user.email"></option>
 											</template>
 										</select>
 									</div>
@@ -712,13 +712,13 @@
 										<input type="text" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.ticket_number" class="input input-sm input-bordered w-full" placeholder="e.g. JIRA-1234"/>
 									</div>
 									<div class="col-span-3">
-										<h4 class="subtitle text-sm"><i x-show="selectedSubControl.is_overdue" class="ti ti-clock-exclamation text-error mr-1 my-auto"></i>Planned End</h4>
-										<input type="date" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.planned_end" :class="{'input-error': selectedSubControl.is_overdue}" class="input input-sm input-bordered w-full"/>
-										<p x-show="selectedSubControl.is_overdue" class="text-xs text-error mt-1">Overdue: not complete (fully implemented with evidence) by the planned date.</p>
+										<h4 class="subtitle text-sm"><i x-show="selectedSubControl?.is_overdue" class="ti ti-clock-exclamation text-error mr-1 my-auto"></i>Planned End</h4>
+										<input type="date" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.planned_end" :class="{'input-error': selectedSubControl?.is_overdue}" class="input input-sm input-bordered w-full"/>
+										<p x-show="selectedSubControl?.is_overdue" class="text-xs text-error mt-1">Overdue: not complete (fully implemented with evidence) by the planned date.</p>
 									</div>
 									<div class="col-span-6">
-										<h4 class="subtitle text-sm"><i x-show="!selectedSubControl.context" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Details</h4>
-										<textarea rows="5" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.context" :value="selectedSubControl.context" x-text="selectedSubControl.context" :class="{'border-warning animate-pulse': !selectedSubControl.context && selectedSubControl.implemented>0}" class="textarea w-full" placeholder="Add information about how the subcontrol is satisfied. Provide details on the scope and any context for the auditor."></textarea>
+										<h4 class="subtitle text-sm"><i x-show="!selectedSubControl?.context" class="ti ti-alert-triangle text-warning mr-1 my-auto"></i>Implementation Details</h4>
+										<textarea rows="5" @change="updateSubcontrol(selectedSubControl)" x-model="selectedSubControl.context" :value="selectedSubControl?.context" x-text="selectedSubControl?.context" :class="{'border-warning animate-pulse': !selectedSubControl?.context && selectedSubControl?.implemented>0}" class="textarea w-full" placeholder="Add information about how the subcontrol is satisfied. Provide details on the scope and any context for the auditor."></textarea>
 										<p class="text-xs">Note: The implementation details describes how the InfoSec team satisfies the control.</p>
 									</div>
 
@@ -732,7 +732,7 @@
 								<span class="loading loading-dots loading-lg"></span>
 							</div>
 
-							<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!loadingEvidence && !selectedSubControl.evidence.length">
+							<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!loadingEvidence && !selectedSubControl?.evidence.length">
 								<div class="hero w-full h-full">
 									<div class="hero-content text-center flex flex-col justify-center w-full h-full">
 										<div class="max-w-md mx-auto">
@@ -750,7 +750,7 @@
 							</div>
 
 
-							<div x-show="!loadingEvidence && selectedSubControl.evidence.length">
+							<div x-show="!loadingEvidence && selectedSubControl?.evidence.length">
 								<div class="flex justify-between mb-2">
 									<h1 class="text-2xl font-semibold">Evidence</h1>
 									<div class="flex flex-row gap-x-2">
@@ -772,7 +772,7 @@
 										  </tr>
 										</thead>
 										<tbody>
-											<template x-for="(item, index) in selectedSubControl.evidence">
+											<template x-for="(item, index) in (selectedSubControl?.evidence ?? [])">
 											  <tr>
 												<th></th>
 												<td x-text="item.name"></td>
@@ -810,7 +810,7 @@
 					</div>
 					<div x-show="activeSubSideTab==='risks'" class="card p-4">
 						<div class="overflow-auto">
-							<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!selectedSubControl.risks.length">
+							<div class="flex flex-col justify-center items-center min-h-[60vh] w-full" x-show="!selectedSubControl?.risks.length">
 								<div class="hero w-full h-full">
 									<div class="hero-content text-center flex flex-col justify-center w-full h-full">
 										<div class="max-w-md mx-auto">
@@ -827,7 +827,7 @@
 								</div>
 							</div>
 
-							<div x-show="selectedSubControl.risks.length">
+							<div x-show="selectedSubControl?.risks.length">
 								<div class="flex justify-between mb-2">
 									<h1 class="text-2xl font-semibold">Risks</h1>
 									<div class="flex flex-row gap-x-2">
@@ -847,7 +847,7 @@
 										  </tr>
 										</thead>
 										<tbody>
-											<template x-for="(item, index) in selectedSubControl.risks">
+											<template x-for="(item, index) in (selectedSubControl?.risks ?? [])">
 											  <tr>
 												<th></th>
 												<td @click="openRiskFromSubControl(item)" class="underline hover:cursor-pointer hover:opacity-75" x-text="item.title"></td>
@@ -983,16 +983,16 @@
 								  :class="expanded ? 'h-40' : ''"
 								>
 								  <span class="text-xs">
-									<template x-if="selectedReport.description.length > 500">
+									<template x-if="(selectedReport.description || '').length > 500">
 									  <p class="font-normal text-xs" x-text="expanded ? selectedReport.description : selectedReport.description.slice(0, 500) + '...'"></p>
 									</template>
-									<template x-if="selectedReport.description.length <= 500">
+									<template x-if="(selectedReport.description || '').length <= 500">
 									  <p class="font-normal text-xs" x-text="selectedReport.description"></p>
 									</template>
 								  </span>
 
 								  <button
-									x-show="selectedReport.description.length > 500"
+									x-show="(selectedReport.description || '').length > 500"
 									@click="expanded = !expanded"
 									class="underline text-ss"
 								  >
@@ -1316,7 +1316,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 					<div class="col-span-12">
 					   <div class="card bg-base-200 w-full">
 						  <div>
-							<div x-show="selectedEvidence.controls.length>0" role="alert" class="alert bg-base-100 mb-2">
+							<div x-show="selectedEvidence.controls?.length>0" role="alert" class="alert bg-base-100 mb-2">
 								<i class="ti ti-alert-triangle text-warning text-lg"></i>
 								<span class="text-sm text-warning">
 									If you edit or change the evidence below, it will impact all the associated controls.
@@ -1354,10 +1354,10 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 													<tbody>
 													  <tr>
 														<td class="font-semibold" x-text="selectedEvidence.file_name"></td>
-														<td class="font-semibold" x-text="selectedEvidence.file_provider.toUpperCase()"></td>
+														<td class="font-semibold" x-text="selectedEvidence.file_provider?.toUpperCase()"></td>
 														<td>
 															<div class="flex flex-row gap-x-4">
-																<a :href="'/api/v1/evidence/'+selectedEvidence.id+'/file'" :download="selectedEvidence.file['name']" class="btn btn-xs bg-base-100">Download</a>
+																<a :href="'/api/v1/evidence/'+selectedEvidence.id+'/file'" :download="selectedEvidence.file?.['name']" class="btn btn-xs bg-base-100">Download</a>
 															</div>
 														</td>
 													  </tr>
@@ -1387,7 +1387,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 									<thead>
 									  <tr>
 										<th class="bg-base-100 p-4 rounded-tl-md"></th>
-										<th class="bg-base-100 p-4" x-text="'Associated Subcontrol ('+selectedEvidence.controls.length+')'"></th>
+										<th class="bg-base-100 p-4" x-text="'Associated Subcontrol ('+selectedEvidence.controls?.length+')'"></th>
 									  </tr>
 									</thead>
 									<tbody class="bg-base-100 overflow-y-auto">
@@ -1466,7 +1466,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						'progress-success': projectData.completion_progress >= 75
 					  }"
 					  class="progress w-40 my-auto"
-					  :value="projectData.completion_progress+2"
+					  :value="(projectData.completion_progress || 0)+2"
 					  max="100">
 					</progress>
 					<i
@@ -1681,8 +1681,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 										<td class="capitalize font-semibold">Add Members</td>
 										<td>Add users to your project for collaboration</td>
 										<td><button class="btn btn-ghost">
-											<i x-show="projectData.members.length > 1" class="ti ti-check text-success"></i>
-											<i x-show="projectData.members.length <= 1" class="ti ti-x text-error"></i>
+											<i x-show="projectData.members?.length > 1" class="ti ti-check text-success"></i>
+											<i x-show="projectData.members?.length <= 1" class="ti ti-x text-error"></i>
 										</button></td>
 										<td><button class="btn btn-sm btn-ghost" @click="switchTab({'tab': 'users'})"><i class="ti ti-arrow-right text-lg"></i></button></td>
 									</tr>
@@ -1711,8 +1711,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 										<td class="capitalize font-semibold">Add Auditor</td>
 										<td>Add Auditor to your project</td>
 										<td><button class="btn btn-ghost">
-											<i x-show="!projectData.auditor_enabled || projectData.auditors.length" class="ti ti-check text-success"></i>
-											<i x-show="projectData.auditor_enabled && !projectData.auditors.length" class="ti ti-x text-error"></i>
+											<i x-show="!projectData.auditor_enabled || projectData.auditors?.length" class="ti ti-check text-success"></i>
+											<i x-show="projectData.auditor_enabled && !projectData.auditors?.length" class="ti ti-x text-error"></i>
 										</button></td>
 										<td><button class="btn btn-sm btn-ghost" @click="switchTab({'tab': 'users'})"><i class="ti ti-arrow-right text-lg"></i></button></td>
 									</tr>
@@ -1905,7 +1905,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 									</ul>
 								  </li>
 								</ul>
-								<ul x-show="projectData.auditors.length===0" class="menu bg-base-200 rounded-box py-0 mt-0">
+								<ul x-show="projectData.auditors?.length===0" class="menu bg-base-200 rounded-box py-0 mt-0">
 								  <li>
 									<div class="menu-title text-xs flex justify-between">
 										<h2>Auditor Review</h2>
@@ -2016,10 +2016,10 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 										<span class="my-auto text-base-content" x-text="'Subcontrols ('+filteredSubControls.length+')'"></span>
 									</div>
 								</th>
-								<th x-show="projectData.auditors.length>0" class="bg-base-200 border-base-300 rounded-tr-md p-6 text-xs border-b border-base-100 w-1 text-center">
+								<th x-show="projectData.auditors?.length>0" class="bg-base-200 border-base-300 rounded-tr-md p-6 text-xs border-b border-base-100 w-1 text-center">
 									<span class="my-auto text-base-content">Review Status</span>
 								</th>
-								<th x-show="projectData.auditors.length===0" class="bg-base-200 border-base-300 rounded-tr-md p-6 text-xs border-b border-base-100 w-1 text-center">
+								<th x-show="projectData.auditors?.length===0" class="bg-base-200 border-base-300 rounded-tr-md p-6 text-xs border-b border-base-100 w-1 text-center">
 									<span class="my-auto text-base-content">Owner(s)</span>
 								</th>
 
@@ -2043,7 +2043,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 										<span class="text-xs" x-text="item.progress_completed"></span>
 										<div class="flex flex-row gap-x-0.5">
 										  <div class="flex space-x-1">
-											  <template x-for="n in idToProgressBarMapping[item.id].total">
+											  <template x-for="n in idToProgressBarMapping[item.id]?.total">
 												<div
 												  class="flex flex-col flex-nowrap justify-end w-0.5 h-3 bg-neutral-content opacity-90 rounded-full overflow-hidden relative"
 												  role="progressbar"
@@ -2085,28 +2085,28 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 								  </td>
 								  <td class="capitalize font-semibold text-center">
 									  <div @click="openControlInDrawer(item, tab='subcontrols')" class="hover:cursor-pointer hover:opacity-75" x-show="item.stats.owners===0">
-										  <div x-show="projectData.auditors.length<1">
+										  <div x-show="projectData.auditors?.length<1">
 											  <div class="avatar placeholder">
 												<div class="bg-base-100 w-8 rounded-full">
 													<i class="ti ti-alert-triangle"></i>
 												</div>
 											  </div>
 										  </div>
-										  <div x-show="projectData.auditors.length>0">
+										  <div x-show="projectData.auditors?.length>0">
 											<span :class="{'text-success': item.review_status === 'complete','text-error': item.review_status === 'infosec action'}" x-show="!isAuditor" x-text="item.review_status" class="px-2 py-2 rounded-lg text-[9px] uppercase bg-base-100"></span>
 											<span :class="{'text-success': item.review_status === 'complete','text-error': item.review_status === 'ready for auditor'}" x-show="isAuditor" x-text="item.review_status" class="px-2 py-2 rounded-lg text-[9px] uppercase bg-base-100"></span>
 
 										  </div>
 									  </div>
 									  <div @click="openControlInDrawer(item, tab='subcontrols')" class="hover:cursor-pointer hover:opacity-75" x-show="item.stats.owners>0">
-										  <div x-show="projectData.auditors.length<1">
+										  <div x-show="projectData.auditors?.length<1">
 											  <div class="avatar placeholder">
 												<div class="bg-base-100 w-8 rounded-full">
 													<span class="text-xs" x-text="item.stats.owners+'+'"></span>
 												</div>
 											  </div>
 										  </div>
-										  <div x-show="projectData.auditors.length>0">
+										  <div x-show="projectData.auditors?.length>0">
 											<span :class="{'text-success': item.review_status === 'complete','text-error': item.review_status === 'infosec action'}" x-show="!isAuditor" x-text="item.review_status" class="px-2 py-2 rounded-lg text-[9px] uppercase bg-base-100"></span>
 											<span :class="{'text-success': item.review_status === 'complete','text-error': item.review_status === 'ready for auditor'}" x-show="isAuditor" x-text="item.review_status" class="px-2 py-2 rounded-lg text-[9px] uppercase bg-base-100"></span>
 										  </div>
@@ -2899,13 +2899,13 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 
 			<div class="col-span-6 text-center" x-show="selectedTab === 'audit review' && !tabLoading">
 				<div class="grid grid-cols-12 gap-4">
-					<div x-show="projectData.auditors.length" class="col-span-12">
+					<div x-show="projectData.auditors?.length" class="col-span-12">
 						<div role="alert" class="alert bg-base-200">
 							<i class="ti ti-alert-triangle text-md"></i>
 							<span class="text-xs">Each control will have a review status to guide the review process. The three (3) possible review statuses are shown below with the number of controls for each one.</span>
 						</div>
 					</div>
-					<div x-show="!projectData.auditors.length" class="col-span-12">
+					<div x-show="!projectData.auditors?.length" class="col-span-12">
 						<div role="alert" class="alert bg-base-200">
 							<i class="ti ti-alert-triangle text-warning text-md"></i>
 							<span class="text-xs">Please add a Auditor to your project! The Auditor will have access to change the review status.</span>
@@ -3758,8 +3758,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 						<h5 class="font-semibold mb-2 text-sm">Relates to Subcontrol (Optional)</h5>
 						<div class="flex flex-row">
 							<select x-model="feedbackRelatesTo" class="select select-sm select-bordered w-full">
-							  <option :selected="!item.subcontrol_id">Select a Subcontrol</option>
-								<template x-for="subcontrol in selectedControl.subcontrols">
+							  <option :selected="!feedbackRelatesTo">Select a Subcontrol</option>
+								<template x-for="subcontrol in (selectedControl?.subcontrols ?? [])">
 									<option :value="subcontrol.id" x-text="getSubcontrolSelection(subcontrol)"></option>
 								</template>
 							</select>
@@ -3804,24 +3804,24 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							</div>
 
 							<div class="col-span-full space-y-2">
-								<label x-show="isAuditor || selectedFeedback.relates_to" class="text-sm font-medium"><i class="ti ti-alert-triangle text-md mr-2 text-warning"></i>(Optional) Which subcontrol does the feedback relate to?</label>
-								<div x-show="isAuditor || selectedFeedback.relates_to" class="flex flex-row">
+								<label x-show="isAuditor || selectedFeedback?.relates_to" class="text-sm font-medium"><i class="ti ti-alert-triangle text-md mr-2 text-warning"></i>(Optional) Which subcontrol does the feedback relate to?</label>
+								<div x-show="isAuditor || selectedFeedback?.relates_to" class="flex flex-row">
 									<select :disabled="!isAuditor" x-model="selectedFeedback.relates_to" class="select select-sm select-bordered w-full">
-									  <option disabled :selected="!selectedFeedback.relates_to">Select a Subcontrol</option>
-										<template x-for="subcontrol in selectedControl.subcontrols">
-											<option :selected="selectedFeedback.relates_to === subcontrol.id" :value="subcontrol.id" x-text="getSubcontrolSelection(subcontrol)"></option>
+									  <option disabled :selected="!selectedFeedback?.relates_to">Select a Subcontrol</option>
+										<template x-for="subcontrol in (selectedControl?.subcontrols ?? [])">
+											<option :selected="selectedFeedback?.relates_to === subcontrol.id" :value="subcontrol.id" x-text="getSubcontrolSelection(subcontrol)"></option>
 										</template>
 									</select>
-									<button class="btn ml-8" x-show="selectedFeedback.subcontrol_id" @click="openSubcontrolInModalById(selectedFeedback.subcontrol_id)">View Subcontrol<i class="ti ti-arrow-right ml-2 text-lg"></i></button>
+									<button class="btn ml-8" x-show="selectedFeedback?.subcontrol_id" @click="openSubcontrolInModalById(selectedFeedback.subcontrol_id)">View Subcontrol<i class="ti ti-arrow-right ml-2 text-lg"></i></button>
 								</div>
 							</div>
 						</div>
 					</div>
 					<div class="col-span-3 mt-4">
 						<div class="col-span-full space-y-2">
-							<label class="text-sm font-medium"><i x-show="!selectedFeedback.response" class="ti ti-alert-triangle text-md mr-2 text-warning"></i>
+							<label class="text-sm font-medium"><i x-show="!selectedFeedback?.response" class="ti ti-alert-triangle text-md mr-2 text-warning"></i>
 							Response from InfoSec Team</label>
-							<textarea :disabled="isAuditor || !isAuditor && (selectedControl.review_status === 'ready for auditor' || selectedControl.review_status === 'complete')" :class="{'border border-error':!isAuditor && !selectedFeedback.response}" :disabled="isAuditor" class="textarea bg-base-200 w-full leading-tight"
+							<textarea :disabled="isAuditor || !isAuditor && (selectedControl?.review_status === 'ready for auditor' || selectedControl?.review_status === 'complete')" :class="{'border border-error':!isAuditor && !selectedFeedback?.response}" :disabled="isAuditor" class="textarea bg-base-200 w-full leading-tight"
 								  rows="10" @change="updateItem(selectedFeedback)"
 								  x-model="selectedFeedback.response"
 								  placeholder="Provide a explanation to the Auditors feedback"></textarea>
@@ -3844,7 +3844,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							  </tr>
 							  <tr>
 								<td>Create a record in the Risk Register. Use this if the InfoSec response was not adequete (e.g. lack of MFA).</td>
-								<td><button :disabled="selectedFeedback.risk_relation" @click="createRiskRecordForFeedback(selectedFeedback)" class="btn btn-xs btn-warning">Create Risk Record</button></td>
+								<td><button :disabled="selectedFeedback?.risk_relation" @click="createRiskRecordForFeedback(selectedFeedback)" class="btn btn-xs btn-warning">Create Risk Record</button></td>
 							  </tr>
 							</tbody>
 						  </table>
@@ -3909,11 +3909,11 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 							<tbody>
 							  <tr>
 								<td class="font-semibold" x-text="selectedEvidence.file_name"></td>
-								<td class="font-semibold" x-text="selectedEvidence.file_provider.toUpperCase()"></td>
+								<td class="font-semibold" x-text="selectedEvidence.file_provider?.toUpperCase()"></td>
 								<td>
 									<div class="flex flex-row gap-x-4">
 <!--                                        <button @click="deleteEvidenceFile(selectedEvidence)" class="btn btn-xs btn-error"><i class="ti ti-trash"></i></button>-->
-										<a :href="'/api/v1/evidence/'+selectedEvidence.id+'/file'" :download="selectedEvidence.file['name']" class="btn btn-xs bg-base-100">Download</a>
+										<a :href="'/api/v1/evidence/'+selectedEvidence.id+'/file'" :download="selectedEvidence.file?.['name']" class="btn btn-xs bg-base-100">Download</a>
 									</div>
 								</td>
 							  </tr>
@@ -3953,8 +3953,8 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 					  <template x-for="subcontrol in subcontrols">
 					  <tr>
 						<th>
-							<button x-show="associatedEvidence.controls.some(control => control.id === subcontrol.id)" @click="removeAssociation(subcontrol)" class="btn btn-sm btn-success"><i class="ti ti-check"></i></button>
-							<button x-show="!associatedEvidence.controls.some(control => control.id == subcontrol.id)" @click="addAssociation(subcontrol)" class="btn btn-sm"><i class="ti ti-square-rounded"></i></button>
+							<button x-show="(associatedEvidence.controls || []).some(control => control.id === subcontrol.id)" @click="removeAssociation(subcontrol)" class="btn btn-sm btn-success"><i class="ti ti-check"></i></button>
+							<button x-show="!(associatedEvidence.controls || []).some(control => control.id == subcontrol.id)" @click="addAssociation(subcontrol)" class="btn btn-sm"><i class="ti ti-square-rounded"></i></button>
 						</th>
 						<td x-text="subcontrol.ref_code+' - '+subcontrol.name"></td>
 					  </tr>
@@ -4338,7 +4338,7 @@ Last reviewed: <span x-text="selectedReport.last_reviewed || 'never'"></span>
 	<div x-show="showCreateSubControlModal" class="modal modal-open">
 		<div class="modal-box">
 			<h3 class="font-bold text-lg mb-4">Add Subcontrol</h3>
-			<p class="text-xs mb-2" x-show="selectedControl" x-text="'Under: ' + (selectedControl ? selectedControl.name : '')"></p>
+			<p class="text-xs mb-2" x-show="selectedControl" x-text="'Under: ' + (selectedControl ? selectedControl?.name : '')"></p>
 			<div class="form-control">
 				<label class="label"><span class="label-text">Title of the subcontrol</span></label>
 				<input type="text" x-model="subControlForm.name" class="input input-sm input-bordered w-full">
@@ -8008,14 +8008,14 @@ function project(){
 		return {
 			init() {
 				Alpine.effect(() => {
-					const tags = Alpine.store('data').controls.map(item => ({
+					const tags = (Alpine.store('data')?.controls || []).map(item => ({
 						label: item.ref_code,
 						value: item.ref_code
 					}));
 					this.tags = tags
 				})
 				Alpine.effect(() => {
-					const users = Alpine.store('users').data.map(item => ({
+					const users = (Alpine.store('users')?.data || []).map(item => ({
 						label: item.email,
 						value: item.email
 					}));

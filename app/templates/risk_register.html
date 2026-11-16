@@ -53,16 +53,16 @@
 								  :class="expanded ? 'h-40' : ''"
 								>
 								  <span class="text-xs">
-									<template x-if="selectedReport.description.length > 500">
+									<template x-if="(selectedReport.description || '').length > 500">
 									  <p class="font-normal text-xs" x-text="expanded ? selectedReport.description : selectedReport.description.slice(0, 500) + '...'"></p>
 									</template>
-									<template x-if="selectedReport.description.length <= 500">
+									<template x-if="(selectedReport.description || '').length <= 500">
 									  <p class="font-normal text-xs" x-text="selectedReport.description"></p>
 									</template>
 								  </span>
 
 								  <button
-									x-show="selectedReport.description.length > 500"
+									x-show="(selectedReport.description || '').length > 500"
 									@click="expanded = !expanded"
 									class="underline text-ss"
 								  >
