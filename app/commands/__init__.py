@@ -1,7 +1,6 @@
 from .init_db import (
-    InitDbCommand,
-    MigrateDbCommand,
-    CreateDbCommand,
-    DataImportCommand,
-    ForceDropTablesCommand,
+    init_db,
+    create_db,
+    migrate_db,
+    force_drop_all_tables,
 )

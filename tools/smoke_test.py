@@ -16,7 +16,7 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import create_app  # noqa: E402
+from app import create_app, db  # noqa: E402
 from app.models import (  # noqa: E402
     Control,
     Framework,
@@ -91,6 +91,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tenant", default="demo")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument(
+        "--clear-pwd-change",
+        action="store_true",
+        help="clear 'must change password' on the admin first (test databases only)",
+    )
     args = ap.parse_args()
 
     app = create_app(os.getenv("FLASK_CONFIG") or "default")
@@ -102,6 +107,13 @@ def main():
         tenant = Tenant.query.filter_by(name=args.tenant).first() or Tenant.query.first()
         if not tenant:
             sys.exit("No tenant found - run tools/seed_demo.py first")
+        if args.clear_pwd_change:
+            admin = User.query.filter_by(
+                email=os.environ.get("DEFAULT_EMAIL", "admin@example.com")
+            ).first()
+            if admin and getattr(admin, "require_pwd_change", False):
+                admin.require_pwd_change = False
+                db.session.commit()
         ids = resolve_ids(tenant)
         print(f"Tenant {tenant.name}: " + ", ".join(f"{k}={v}" for k, v in ids.items()))
 

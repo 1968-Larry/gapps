@@ -1,7 +1,7 @@
 import sys
 import os
 from sqlalchemy import exc
-from flask_sqlalchemy import inspect
+from sqlalchemy import inspect
 
 # improve this hack
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

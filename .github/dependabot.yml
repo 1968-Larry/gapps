@@ -21,6 +21,12 @@ updates:
       # 3.x changed the dist layout and API; upgrade by hand
       - dependency-name: slim-select
         update-types: ["version-update:semver-major"]
+      # 7+ is GPL and needs license_key: 'gpl'; 6.8.x is the last MIT line
+      - dependency-name: tinymce
+        update-types: ["version-update:semver-major"]
+      # 32+ changed the grid API; upgrade by hand
+      - dependency-name: ag-grid-community
+        update-types: ["version-update:semver-major"]
 
   # Tailwind/daisyUI build of app/static/css/main.css
   - package-ecosystem: npm
@@ -40,6 +46,12 @@ updates:
     groups:
       python-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # SQLAlchemy 2 / Flask-SQLAlchemy 3.1 need code changes; upgrade by hand
+      - dependency-name: sqlalchemy
+        update-types: ["version-update:semver-major"]
+      - dependency-name: flask-sqlalchemy
+        versions: [">=3.1"]
 
   - package-ecosystem: docker
     directory: /

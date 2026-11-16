@@ -44,8 +44,14 @@ jobs:
       - name: Demo data
         run: docker compose exec -T app python3 tools/seed_demo.py --projects 2 --frameworks soc2,iso_27001_2022
 
+      - name: Installed Python packages
+        run: docker compose exec -T app pip freeze --all
+
+      - name: manage.py commands load
+        run: docker compose exec -T app python3 manage.py --help
+
       - name: Smoke test (every page and API endpoint)
-        run: docker compose exec -T app python3 tools/smoke_test.py
+        run: docker compose exec -T app python3 tools/smoke_test.py --clear-pwd-change
 
       - name: CDN files match the committed files (ASSET_MODE=cdn)
         if: always()
@@ -66,12 +72,12 @@ jobs:
         with:
           node-version: 22
 
-      - name: Audit browser libraries (vendor/)
+      - name: Audit browser libraries (vendor/, shipped packages only)
         if: always()
-        working-directory: vendor
-        run: npm audit --omit=dev
+        run: node scripts/npm-audit-direct.mjs vendor
 
+      # Build tools for main.css only, never shipped: fail on high/critical
       - name: Audit Tailwind build tools (tl_src/)
         if: always()
         working-directory: tl_src
-        run: npm audit
+        run: npm audit --audit-level=high

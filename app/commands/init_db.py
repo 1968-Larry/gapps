@@ -1,47 +1,8 @@
 from flask import current_app
-from flask_script import Command
 from flask_migrate import Migrate
 from alembic import command
 from app.models import *
 from app import db
-
-
-class InitDbCommand(Command):
-    """Initialize the database."""
-
-    def run(self):
-        init_db()
-        print("[INFO] Database has been initialized.")
-
-
-class CreateDbCommand(Command):
-    """Migrate the database."""
-
-    def run(self):
-        create_db()
-        print("[INFO] Database has been created.")
-
-
-class MigrateDbCommand(Command):
-    """Migrate the database."""
-
-    def run(self):
-        migrate_db()
-        print("[INFO] Database has been migrated.")
-
-
-class DataImportCommand(Command):
-    """Perform data import tasks"""
-
-    def run(self):
-        raise ValueError("Not implemented")
-
-
-class ForceDropTablesCommand(Command):
-    """Force Drop all tables in the database"""
-
-    def run(self):
-        force_drop_all_tables()
 
 
 def init_db():

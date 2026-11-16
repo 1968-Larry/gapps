@@ -1,4 +1,4 @@
-FROM python:3.9-slim AS builder
+FROM python:3.12-slim AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -21,7 +21,7 @@ RUN [ -n "$PIP_INDEX_URL" ] || unset PIP_INDEX_URL; \
     pip install -r requirements.txt
 
 # Final application image
-FROM python:3.9-slim AS app
+FROM python:3.12-slim AS app
 
 WORKDIR /app
 
