@@ -1024,7 +1024,7 @@ class Tenant(db.Model, QueryMixin, AuthorizerMixin):
 
     @validates("name")
     def _validate_name(self, key, name):
-        special_characters = "!\"#$%&'()*+,-./:;<=>?@[\]^`{|}~"
+        special_characters = "!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~"
         if any(c in special_characters for c in name):
             raise ValueError("Illegal characters in name")
         return name
@@ -6672,7 +6672,8 @@ class Logs(db.Model):
         """
         get_logs(level='error', namespace="my_namespace", meta={"key":"value":"key2":"value2"})
         """
-        _query = Logs.query.order_by(Logs.date_added.desc()).limit(limit)
+        # limit() is applied last: SQLAlchemy refuses filter() after limit()
+        _query = Logs.query.order_by(Logs.date_added.desc())
 
         if id:
             _query = _query.filter(Logs.id == id)
@@ -6702,12 +6703,14 @@ class Logs(db.Model):
             _query = _query.filter(
                 Logs.date_added >= arrow.utcnow().shift(hours=-span).datetime
             )
-        if as_query:
-            return _query
         if as_count:
-            return _query.count()
+            return _query.limit(limit).count() if limit else _query.count()
         if paginate:
             return _query.paginate(page=page, per_page=10)
+        if limit:
+            _query = _query.limit(limit)
+        if as_query:
+            return _query
         if as_dict:
             return [log.as_dict() for log in _query.all()]
         return _query.all()
