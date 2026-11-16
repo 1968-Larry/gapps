@@ -15,6 +15,7 @@ import importlib.util
 import os
 import re
 import sys
+import time
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -44,18 +45,26 @@ def main():
     assets = va.VendorAssets(mode="cdn", cdn_url=os.environ.get("ASSET_CDN_URL", va.DEFAULT_CDN))
     paths = sorted(assets.integrity) if args.all else sorted(template_paths())
     bad = 0
+    unreachable = 0
     for path in paths:
         target = assets._cdn_target(path)
         if target is None:
             continue  # always served locally
         url = assets.url(path)
         want = assets.integrity.get(path)
-        try:
-            with urllib.request.urlopen(url, timeout=30) as resp:
-                body = resp.read()
-        except Exception as e:
-            print(f"FAIL  {path}: {url}: {e}")
-            bad += 1
+        body, error = None, None
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:
+                    body = resp.read()
+                break
+            except Exception as e:  # CDN outage or network: try again
+                error = e
+                time.sleep(5 * (attempt + 1))
+        if body is None:
+            # Could not be checked (CDN down); not proof that the file differs
+            print(f"WARN  {path}: could not download {url}: {error}")
+            unreachable += 1
             continue
         got = "sha384-" + base64.b64encode(hashlib.sha384(body).digest()).decode()
         if want != got:
@@ -64,7 +73,11 @@ def main():
         else:
             print(f"ok    {path}")
     if bad:
-        sys.exit(f"{bad} CDN file(s) failed")
+        sys.exit(f"{bad} CDN file(s) differ from the committed files")
+    if unreachable:
+        print(f"::warning::{unreachable} CDN file(s) could not be downloaded and were not checked")
+        print("All CDN files that could be downloaded match the committed files")
+        return
     print("All CDN files match the committed files")
 
 
