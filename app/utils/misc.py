@@ -1,12 +1,15 @@
 from flask import current_app, abort
 from app import models, db
-from itsdangerous import (
-    TimedJSONWebSignatureSerializer as Serializer,
-    BadSignature,
-    SignatureExpired,
-)
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from sqlalchemy import or_
+import base64
+import hashlib
+import hmac
+import json
 import re
+import time
+
+TOKEN_SALT = "gapps-token"
 
 
 class Response:
@@ -40,25 +43,67 @@ def perform_pwd_checks(password, password_two=None):
     return True
 
 
+def _verify_legacy_jws(token, secret_key):
+    """
+    Tokens made before the itsdangerous 2 upgrade (TimedJSONWebSignatureSerializer:
+    header.payload.signature, HMAC-SHA512 with the secret key, "exp" in the header).
+    Verified here so API tokens and invites issued earlier keep working until
+    they expire. Returns the data, raises BadSignature / SignatureExpired.
+    """
+
+    def b64decode(part):
+        return base64.urlsafe_b64decode(part + "=" * (-len(part) % 4))
+
+    try:
+        header_b64, payload_b64, sig_b64 = token.split(".")
+        header = json.loads(b64decode(header_b64))
+        payload = json.loads(b64decode(payload_b64))
+        signature = b64decode(sig_b64)
+    except (ValueError, TypeError):
+        raise BadSignature("Malformed token")
+    if header.get("alg") != "HS512":
+        raise BadSignature("Unsupported algorithm")
+    key = secret_key.encode() if isinstance(secret_key, str) else secret_key
+    expected = hmac.new(
+        key, f"{header_b64}.{payload_b64}".encode(), hashlib.sha512
+    ).digest()
+    if not hmac.compare_digest(expected, signature):
+        raise BadSignature("Signature does not match")
+    exp = header.get("exp")
+    if not isinstance(exp, (int, float)) or exp < time.time():
+        raise SignatureExpired("Token expired")
+    return payload
+
+
 def verify_jwt(token):
     if not token:
         current_app.logger.warning("Empty token when verifying JWT")
         return False
-    s = Serializer(current_app.config["SECRET_KEY"])
+    secret = current_app.config["SECRET_KEY"]
     try:
-        data = s.loads(token)
+        s = URLSafeTimedSerializer(secret, salt=TOKEN_SALT)
+        try:
+            payload, signed_at = s.loads(token, return_timestamp=True)
+        except SignatureExpired:
+            raise
+        except BadSignature:
+            return _verify_legacy_jws(token, secret)
+        expires_in = payload.get("expires_in")
+        if expires_in and time.time() - signed_at.timestamp() > expires_in:
+            raise SignatureExpired("Token expired")
+        return payload.get("data")
     except SignatureExpired:
         current_app.logger.warning("SignatureExpired while verifying JWT")
         return False
     except BadSignature:
         current_app.logger.warning("BadSignature while verifying JWT")
         return False
-    return data
 
 
 def generate_jwt(data={}, expiration=6000):
-    s = Serializer(current_app.config["SECRET_KEY"], expires_in=expiration)
-    return s.dumps(data).decode("utf-8")
+    """Signed, timestamped token (not a JWT despite the name; kept for callers)."""
+    s = URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt=TOKEN_SALT)
+    return s.dumps({"data": data, "expires_in": int(expiration) if expiration else None})
 
 
 def request_to_json(request):
@@ -179,7 +224,7 @@ def get_users_from_text(text, resolve_users=False, tenant=None):
     will return a list of found emails (or resolved user objects)
     """
     data = []
-    emails = re.findall("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+    emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
     if not resolve_users:
         return emails
     for email in emails:
