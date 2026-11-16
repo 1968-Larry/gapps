@@ -95,6 +95,8 @@ def main():
 
     app = create_app(os.getenv("FLASK_CONFIG") or "default")
     app.config["TESTING"] = True
+    # The test client talks plain http; a Secure cookie would never be sent back
+    app.config["SESSION_COOKIE_SECURE"] = False
     failures, checked, skipped = [], 0, 0
     with app.app_context():
         tenant = Tenant.query.filter_by(name=args.tenant).first() or Tenant.query.first()
@@ -111,8 +113,12 @@ def main():
                 "password": os.environ.get("DEFAULT_PASSWORD", "admin1234567"),
             },
         )
-        if r.status_code >= 400 or client.get("/api/v1/session").status_code != 200:
-            sys.exit(f"Login failed (HTTP {r.status_code})")
+        check = client.get("/api/v1/session")
+        if r.status_code >= 400 or check.status_code != 200:
+            sys.exit(
+                f"Login failed: POST /login -> {r.status_code} {r.headers.get('Location')}, "
+                f"GET /api/v1/session -> {check.status_code}"
+            )
 
         static_refs = set()
         rules = sorted(app.url_map.iter_rules(), key=lambda r: r.rule)
