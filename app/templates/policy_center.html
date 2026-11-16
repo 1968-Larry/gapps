@@ -2,6 +2,7 @@
 
 {%block head%}
 {{ vendor_js('tinymce/tinymce.min.js') }}
+<script src="{{ url_for('static', filename='js/tinymce-compat.js') }}"></script>
     {{ vendor_js('tinymce-variable/plugin.js') }}
 <style>
 .tox-tinymce {
@@ -989,6 +990,7 @@
             initEditor() {
                 editor = tinymce.init({
                     selector: '#default',
+                    license_key: 'gpl',
                     custom_undo_redo_levels: 10,
                     promotion: false,
                     height: 600,
@@ -1103,7 +1105,7 @@
 
                             // Register the slash commands autocompleter
                             editor.ui.registry.addAutocompleter('slashcommands', {
-                                ch: '/',
+                                trigger: '/',
                                 minChars: 0,
                                 columns: 1,
                                 fetch: function (pattern) {

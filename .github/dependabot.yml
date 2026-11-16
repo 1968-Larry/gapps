@@ -21,7 +21,8 @@ updates:
       # 3.x changed the dist layout and API; upgrade by hand
       - dependency-name: slim-select
         update-types: ["version-update:semver-major"]
-      # 7+ is GPL and needs license_key: 'gpl'; 6.8.x is the last MIT line
+      # Majors change the editor API (and 7 changed the licence to GPL); check
+      # the migration notes and app/static/js/tinymce-compat.js first
       - dependency-name: tinymce
         update-types: ["version-update:semver-major"]
       # 32+ changed the grid API; upgrade by hand

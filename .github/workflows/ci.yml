@@ -72,6 +72,23 @@ jobs:
       - name: Smoke test (every page and API endpoint)
         run: docker compose exec -T app python3 tools/smoke_test.py --clear-pwd-change
 
+      - name: Browser test (editor and main pages in Chromium)
+        run: |
+          pip install --quiet playwright
+          python3 -m playwright install --with-deps chromium > /dev/null
+          ids=$(docker compose exec -T app python3 -c "
+          from app import create_app
+          from app.models import Tenant, Project
+          app = create_app()
+          with app.app_context():
+              t = Tenant.query.filter_by(name='demo').first()
+              p = Project.query.filter_by(tenant_id=t.id).first()
+              print(t.id, p.id)
+          " 2>/dev/null | tail -1)
+          python3 -m http.server 8099 > /dev/null 2>&1 &
+          sleep 1
+          python3 tools/browser_test.py --tid ${ids% *} --pid ${ids#* }
+
       - name: CDN files match the committed files (ASSET_MODE=cdn)
         if: always()
         run: docker compose exec -T app python3 tools/check_cdn_assets.py

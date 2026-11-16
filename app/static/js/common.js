@@ -134,6 +134,7 @@ function getModalFields(tableHeaders={}) {
 function getEditorConfig(selector, readOnly=false) {
     let defaultConfig = {
         selector: selector,
+        license_key: "gpl",  // TinyMCE 7+ is GPL-2.0-or-later (self-hosted)
         statusbar: false,
         promotion: false,
         content_css: "/static/css/tiny_custom.css"

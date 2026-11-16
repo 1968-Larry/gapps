@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!--
+  Test page for the vendored TinyMCE with the settings gapps uses: licence key,
+  plugins, the old tinymce-variable plugin (through tinymce-compat.js), a "/"
+  autocompleter like the policy center, and getEditorConfig() from common.js
+  in read-only mode. Served from the repository root by tools/browser_test.py.
+  Result in window.harnessResult.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TinyMCE harness</title>
+  <script src="/app/static/vendor/tinymce/tinymce.min.js"></script>
+  <script src="/app/static/js/tinymce-compat.js"></script>
+  <script src="/app/static/vendor/tinymce-variable/plugin.js"></script>
+  <script src="/app/static/js/common.js"></script>
+</head>
+<body>
+  <textarea id="policy"></textarea>
+  <div id="notes"></div>
+  <script>
+    const result = { errors: [] };
+    window.addEventListener("error", (e) => result.errors.push(String(e.message)));
+
+    function done() {
+      window.harnessResult = result;
+    }
+
+    tinymce.init({
+      selector: "#policy",
+      license_key: "gpl",
+      promotion: false,
+      plugins: "preview fullscreen searchreplace table codesample lists advlist variable visualblocks link",
+      variable_mapper: { company: "Company name" },
+      variable_prefix: "{",
+      variable_suffix: "}",
+      setup: (editor) => {
+        editor.ui.registry.addAutocompleter("slashcommands", {
+          trigger: "/",
+          minChars: 0,
+          columns: 1,
+          fetch: () => Promise.resolve([{ value: "x", text: "Heading" }]),
+          onAction: (api) => api.hide(),
+        });
+        editor.on("init", () => {
+          result.version = tinymce.majorVersion + "." + tinymce.minorVersion;
+          editor.setContent("<p>Policy for {company} and more</p>");
+          editor.dispatch("keyup");
+          const span = editor.getBody().querySelector("[data-original-variable]");
+          result.variableRendered = !!span;
+          result.variableLabel = span ? span.textContent : null;
+          result.contentRoundTrip = editor.getContent();
+          editor.execCommand("mceInsertTable", false, { rows: 2, columns: 2 });
+          result.table = !!editor.getBody().querySelector("table");
+          result.policyMode = editor.mode.get();
+
+          const cfg = getEditorConfig("#notes", true);
+          cfg.setup = (ro) => {
+            ro.on("init", () => {
+              result.readonlyMode = ro.mode.get();
+              tinymce.remove("#notes");
+              result.removed = !tinymce.get("notes");
+              done();
+            });
+          };
+          tinymce.init(cfg);
+        });
+      },
+    }).catch((e) => {
+      result.errors.push("init: " + e);
+      done();
+    });
+  </script>
+</body>
+</html>

@@ -63,6 +63,7 @@ function policy() {
             this.getPolicy()
             editor = tinymce.init({
               selector: 'textarea#default',
+              license_key: 'gpl',
               content_css: "{{ url_for('static', filename='css/tiny_custom.css') }}",
               promotion: false,
               height:600,

@@ -6513,7 +6513,7 @@ function project(){
 		},
 		initControlNotesEditor: function() {
 			let selector = "controlNotesEditorDiv"
-			tinymce.EditorManager.execCommand('mceRemoveEditor', true, selector);
+			tinymce.remove('#' + selector);
 
 			console.log("Trying to create editor:"+selector)
 			let readOnly = false;
