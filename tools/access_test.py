@@ -150,6 +150,50 @@ def main():
         with app.app_context():
             ensure_user(LOCK_USER, OUTSIDER_PASSWORD, with_tenant=False)  # unlock again
 
+    # 4. tokens: an API token is not a reset token and the other way round, and
+    #    a reset token stops working once the password has changed
+    with app.app_context():
+        user = User.query.filter_by(email=LOCK_USER).first()
+        api_token = user.generate_auth_token(600)
+        reset_token = user.generate_reset_token(600)
+        checks = {
+            "API token accepted as API token": bool(User.verify_auth_token(api_token)),
+            "reset token accepted for reset": bool(User.verify_reset_token(reset_token)),
+            "API token refused for reset": not User.verify_reset_token(api_token),
+            "reset token refused as API token": not User.verify_auth_token(reset_token),
+            "reset token refused as invite": not User.verify_invite_token(reset_token),
+        }
+        user.set_password("Another-Password-2026!", set_pwd_change=True)
+        db.session.commit()
+        checks["reset token refused after password change"] = not User.verify_reset_token(
+            reset_token
+        )
+        ensure_user(LOCK_USER, OUTSIDER_PASSWORD, with_tenant=False)
+        user.set_password(OUTSIDER_PASSWORD, set_pwd_change=True)
+        db.session.commit()
+    for name, ok in checks.items():
+        if not ok:
+            failures.append(f"tokens: {name} failed")
+    print(f"Tokens: {sum(checks.values())}/{len(checks)} checks passed")
+
+    # 5. security headers on a page of a logged in user
+    resp = client.get("/projects")
+    want = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "SAMEORIGIN",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Cache-Control": "no-store",
+    }
+    for header, value in want.items():
+        if resp.headers.get(header) != value:
+            failures.append(f"header {header}: {resp.headers.get(header)!r}, expected {value!r}")
+    if not (
+        resp.headers.get("Content-Security-Policy")
+        or resp.headers.get("Content-Security-Policy-Report-Only")
+    ):
+        failures.append("no Content-Security-Policy header")
+    print("Headers: checked")
+
     if failures:
         print(f"\n{len(failures)} ACCESS PROBLEMS:")
         for f in failures:
