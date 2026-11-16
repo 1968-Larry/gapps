@@ -362,8 +362,27 @@ needs neither npm nor internet: `git pull` and rebuild.
   copies the new files to `app/static/vendor/` and commits them to the same branch. Review, merge, pull.
 - By hand (Node 18+ and internet): edit `vendor/package.json` or `vendor/assets.json`, run
   `bash scripts/vendor-assets.sh` and commit `vendor/package-lock.json` and `app/static/vendor/`.
-- Only pinned Python packages get updates; `boto3`, `authlib` and `google-cloud-logging` in
-  `requirements.txt` have no version yet.
+- Python 3.12 (image `python:3.12-slim`), Flask 3.1, SQLAlchemy 1.4 with Flask-SQLAlchemy 3.0.
+  `requirements.txt` holds minimum versions (the fixed releases of known vulnerabilities); Dependabot keeps
+  them current. SQLAlchemy 2 / Flask-SQLAlchemy 3.1 need code changes and are left out of its updates.
+- TinyMCE 7 and later are licensed GPL-2.0-or-later (compatible with the AGPL-3.0 of gapps); the editor
+  configs set `license_key: 'gpl'`. `app/static/js/tinymce-compat.js` keeps the older tinymce-variable
+  plugin working.
+- `manage.py` uses Flask's CLI (Flask-Script is gone): `python3 manage.py init_db`, `create_db`,
+  `migrate_db`, `force_drop_db`, `db <flask-migrate command>`.
+
+##### Tests (GitHub Actions, `.github/workflows/ci.yml`)
+Every push, every PR (Dependabot's included) and every Monday:
+- builds the image, starts gapps with Postgres and demo data, logs in over HTTP
+- `tools/smoke_test.py`: every GET page and API endpoint; fails on 5xx or a missing static file
+  (`KNOWN_BROKEN` lists endpoints that were already broken upstream)
+- `tools/browser_test.py`: TinyMCE with the gapps settings and the main pages in Chromium; fails on new
+  JavaScript errors (`tools/browser/known_errors.txt` lists the ones that were there before) and lists
+  CSP violations
+- `tools/check_cdn_assets.py`: the CDN files are byte for byte the committed ones (SRI)
+- pip-audit on the installed Python packages, npm audit on the shipped browser libraries and the
+  Tailwind tools
+When `vendor/package.json` changes, ci waits for vendor-sync, which commits the files and starts ci.
 
 ##### Risk reminder emails
 Reminders are sent by a small script that you run once a day from the docker host, for example from cron.
