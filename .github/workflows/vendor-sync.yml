@@ -18,6 +18,7 @@ on:
       - vendor/assets.json
       - vendor/.npmrc
       - scripts/sync-vendor.mjs
+      - scripts/vendor-assets.sh
       - tl_src/package.json
       - .github/workflows/vendor-sync.yml
   workflow_dispatch:
