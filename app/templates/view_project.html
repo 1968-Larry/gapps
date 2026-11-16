@@ -4851,6 +4851,20 @@ function project(){
 			"controls": true,
 		},
 		selectedReport: {},
+		// counts in the risk filter sidebar, set by filterReports()
+		newReportsCount: 0,
+		triageReportsCount: 0,
+		acceptedReportsCount: 0,
+		mitigatedReportsCount: 0,
+		initialVeryHighRiskCount: 0,
+		initialHighRiskCount: 0,
+		initialLowRiskCount: 0,
+		initialVeryLowRiskCount: 0,
+		initialUnknownRiskCount: 0,
+		createdTodayCount: 0,
+		created7Count: 0,
+		created30Count: 0,
+		previousSelectedReport: null,
 		riskFilterStatus: null,
 		riskFilterPriority: null,
 		riskFilterRisk: null,
@@ -5484,8 +5498,7 @@ function project(){
 
 		},
 		filterReports: function() {
-			if (!this.risks.length) return [];
-		  	const filtered = this.risks.filter(report => {
+		  	const filtered = (this.risks || []).filter(report => {
 			  const statusMatch = this.filter.status ? report.status === this.filter.status : true;
 			  const riskMatch = this.filter.risk ? report.risk === this.filter.risk : true;
 
@@ -5514,7 +5527,24 @@ function project(){
 
 			  return statusMatch && riskMatch && searchMatch && dateMatch;
 		  	});
+			// counts shown in the filter sidebar
+			const count = (fn) => filtered.filter(fn).length;
+			const age = (r) => new Date() - new Date(r.created_at);
+			const day = 24 * 60 * 60 * 1000;
+			this.newReportsCount = count(r => r.status === 'new');
+			this.triageReportsCount = count(r => r.status === 'triage');
+			this.acceptedReportsCount = count(r => r.status === 'accepted');
+			this.mitigatedReportsCount = count(r => r.status === 'mitigated');
+			this.initialVeryHighRiskCount = count(r => r.risk === 'very high');
+			this.initialHighRiskCount = count(r => r.risk === 'high');
+			this.initialLowRiskCount = count(r => r.risk === 'low');
+			this.initialVeryLowRiskCount = count(r => r.risk === 'very low');
+			this.initialUnknownRiskCount = count(r => r.risk === 'unknown');
+			this.createdTodayCount = count(r => age(r) <= day);
+			this.created7Count = count(r => age(r) <= 7 * day);
+			this.created30Count = count(r => age(r) <= 30 * day);
 			this.filteredRisks = filtered;
+			return filtered;
 		},
         disableFilter() {
             this.filter = {

@@ -84,7 +84,7 @@ def check_pages(browser, base, tid, pid, email, password):
     def on_console(msg):
         text = msg.text
         if "Alpine Expression Error" in text:
-            m = re.search(r'Alpine Expression Error: (.*?)\s+Expression: "(.*?)"\s*$', text, re.S)
+            m = re.search(r'Alpine Expression Error: (.*?)\s+Expression: "(.*?)"\n', text, re.S)
             if m:
                 alpine.add((current["url"], m.group(2)[:200], m.group(1)[:150]))
             return
