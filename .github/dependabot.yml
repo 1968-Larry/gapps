@@ -1,0 +1,52 @@
+# Dependabot version updates: one monthly round of PRs per ecosystem, minor and
+# patch updates grouped into one PR, majors as separate PRs to review on their
+# own. Security updates (Settings > Code security > Dependabot security
+# updates) come right away and do not follow this schedule.
+version: 2
+updates:
+  # Browser libraries served from app/static/vendor/ (or the CDN). The
+  # vendor-sync workflow copies the new files into the same PR.
+  - package-ecosystem: npm
+    directory: /vendor
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      vendor-minor-patch:
+        update-types: [minor, patch]
+      alpine:
+        # Core and focus plugin must stay on the same version
+        patterns: ["alpinejs", "@alpinejs/*"]
+    ignore:
+      # 3.x changed the dist layout and API; upgrade by hand
+      - dependency-name: slim-select
+        update-types: ["version-update:semver-major"]
+
+  # Tailwind/daisyUI build of app/static/css/main.css
+  - package-ecosystem: npm
+    directory: /tl_src
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      tailwind-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

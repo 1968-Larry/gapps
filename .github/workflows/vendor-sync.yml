@@ -1,0 +1,52 @@
+# Keeps app/static/vendor/ in step with vendor/package.json.
+#
+# When vendor/package.json (or the asset mapping) changes on any branch - a
+# Dependabot PR or your own edit - this installs the packages, copies the files
+# to app/static/vendor/, writes manifest.json with the SRI hashes and commits
+# the result to the same branch. The server then only needs `git pull`.
+name: vendor-sync
+
+on:
+  push:
+    paths:
+      - vendor/package.json
+      - vendor/package-lock.json
+      - vendor/assets.json
+      - vendor/.npmrc
+      - scripts/sync-vendor.mjs
+      - .github/workflows/vendor-sync.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vendor-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install and copy vendor assets
+        run: bash scripts/vendor-assets.sh
+
+      - name: Commit changes
+        run: |
+          git add vendor/package-lock.json app/static/vendor
+          if git diff --cached --quiet; then
+            echo "app/static/vendor is up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Sync vendor assets with vendor/package.json"
+          git push

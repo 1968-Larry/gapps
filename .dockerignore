@@ -1,0 +1,3 @@
+# Build-time only, never needed in the image
+tl_src/node_modules
+vendor/node_modules

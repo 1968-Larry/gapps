@@ -105,8 +105,11 @@ Gapps is an Security compliance platform that makes it easy to track your progre
   chosen projects. CSV export
 
 **Deployment and operations**
-- Air-gapped install: CSS/JS served from local vendor assets (`scripts/vendor-assets.sh`)
-- Docker: proxy settings for builds, `.env.example` and `docker-compose.override.yml.example`
+- Browser libraries served locally (on-prem / air-gapped) or from a CDN with SRI hashes, one setting
+  (`ASSET_MODE`), the same pinned versions either way; Content-Security-Policy header
+- Dependabot for Python, browser libraries, Tailwind, Docker base image and GitHub Actions; a workflow
+  copies updated browser libraries into the PR
+- Docker: proxy and internal pip mirror settings for builds, `.env.example` and `docker-compose.override.yml.example`
 - Schema updater that runs at start, plus idempotent SQL change scripts in `db/`
 - Backup and restore scripts for database, evidence, reports, audit log and configuration
   (`tools/backup.sh`, `tools/restore.sh`)
@@ -337,6 +340,30 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `EXCEPTION_APPROVERS` | `very high=ciso,high=ciso,low=riskmanager,very low=riskmanager` | Who approves each level: `project_manager`, `riskmanager` (Security manager) or `ciso`, from low to high. A higher role may approve lower levels; admins only when nobody else holds the role |
 | `EXCEPTION_ALLOW_SELF_APPROVAL` | `false` | Let the requester approve their own exception (only for one-person setups) |
 | `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
+| `ASSET_MODE` | `local` | `local` = CSS/JS from `app/static/vendor` (no internet needed), `cdn` = from `ASSET_CDN_URL` with SRI hashes |
+| `ASSET_CDN_URL` | `https://cdn.jsdelivr.net/npm` | npm CDN with the jsDelivr layout `<url>/<package>@<version>/<file>` |
+| `CSP_MODE` | `report-only` | Content-Security-Policy header: `off`, `report-only` (violations only in the browser console) or `enforce` |
+| `PIP_INDEX_URL` / `PIP_TRUSTED_HOST` | empty | Internal pip mirror for `docker compose build` (empty = pypi.org) |
+
+##### Third-party libraries and updates
+The browser libraries (Alpine.js, TinyMCE, ag-grid, flatpickr ...) are pinned in `vendor/package.json`.
+`vendor/assets.json` maps each file in `app/static/vendor/` to a file in one of those packages. The files
+and `app/static/vendor/manifest.json` (installed versions and SRI hashes) are committed to git, so a server
+needs neither npm nor internet: `git pull` and rebuild.
+
+- `ASSET_MODE=local` serves them from the app, `ASSET_MODE=cdn` loads the same version from the CDN with an
+  `integrity` hash taken from the committed file, so the browser refuses anything that differs from git.
+- Templates use `{{ vendor_js('path') }}`, `{{ vendor_css('path') }}` and `{{ vendor_url('path') }}` with the
+  path below `app/static/vendor/`, never a hard-coded URL.
+- Dependabot (`.github/dependabot.yml`) opens monthly PRs for `vendor/`, `tl_src/`, `requirements.txt`, the
+  Dockerfile base image and the GitHub Actions; minor and patch updates are grouped. Security updates come
+  right away when "Dependabot security updates" is on in the repository settings.
+- The `vendor-sync` workflow runs on every change to `vendor/package.json` (including Dependabot PRs),
+  copies the new files to `app/static/vendor/` and commits them to the same branch. Review, merge, pull.
+- By hand (Node 18+ and internet): edit `vendor/package.json` or `vendor/assets.json`, run
+  `bash scripts/vendor-assets.sh` and commit `vendor/package-lock.json` and `app/static/vendor/`.
+- Only pinned Python packages get updates; `boto3`, `authlib` and `google-cloud-logging` in
+  `requirements.txt` have no version yet.
 
 ##### Risk reminder emails
 Reminders are sent by a small script that you run once a day from the docker host, for example from cron.

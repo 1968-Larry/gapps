@@ -164,6 +164,15 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
 
+    # Browser libraries (app/utils/vendor_assets.py). local = served from
+    # app/static/vendor (on-prem / air-gapped), cdn = loaded from ASSET_CDN_URL
+    # with SRI hashes. Same versions either way (vendor/package.json).
+    ASSET_MODE = os.environ.get("ASSET_MODE", "local").lower()
+    ASSET_CDN_URL = os.environ.get("ASSET_CDN_URL", "https://cdn.jsdelivr.net/npm")
+    # Content-Security-Policy header: off, report-only (violations only shown in
+    # the browser console) or enforce
+    CSP_MODE = os.environ.get("CSP_MODE", "report-only").lower()
+
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )

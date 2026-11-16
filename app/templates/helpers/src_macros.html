@@ -1,64 +1,64 @@
 {% macro filehelper(grid=False,apex=False,datepicker=False,spinner=False,select=False,sortable=False,driver=True,editor=False,confetti=False,mentions=False,sanitize=False,files=False,tags=False,markdown=False,report=False) -%}
   {% if sanitize %}
-    <script src="{{ url_for('static', filename='vendor/dompurify/purify.min.js') }}"></script>
+    {{ vendor_js('dompurify/purify.min.js') }}
   {%endif%}
   {% if spinner %}
-    <script type="text/javascript" src="{{ url_for('static', filename='vendor/ldloader/ldld.min.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/ldloader/ldld.min.css') }}">
+    {{ vendor_js('ldloader/ldld.min.js') }}
+    {{ vendor_css('ldloader/ldld.min.css') }}
   {%endif%}
   {% if grid %}
-    <script src="{{ url_for('static', filename='vendor/ag-grid/ag-grid-community.min.js') }}"></script>
+    {{ vendor_js('ag-grid/ag-grid-community.min.js') }}
     <script src="{{ url_for('static', filename='js/field-transformers.js') }}"></script>
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/custom-grid.css') }}"/>
   {% endif %}
   {% if apex %}
-    <script src="{{ url_for('static', filename='vendor/apexcharts/apexcharts.min.js') }}"></script>
+    {{ vendor_js('apexcharts/apexcharts.min.js') }}
   {% endif %}
   {% if datepicker %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/flatpickr/flatpickr.min.css') }}">
-    <script src="{{ url_for('static', filename='vendor/flatpickr/flatpickr.min.js') }}"></script>
+    {{ vendor_css('flatpickr/flatpickr.min.css') }}
+    {{ vendor_js('flatpickr/flatpickr.min.js') }}
   {% endif %}
   {% if select %}
-    <script src="{{ url_for('static', filename='vendor/slim-select/slimselect.min.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/slim-select/slimselect.css') }}" />
+    {{ vendor_js('slim-select/slimselect.min.js') }}
+    {{ vendor_css('slim-select/slimselect.css') }}
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/custom-slim.css') }}"/>
 
   {% endif %}
   {% if editor %}
-    <script src="{{ url_for('static', filename='vendor/tinymce/tinymce.min.js') }}"></script>
+    {{ vendor_js('tinymce/tinymce.min.js') }}
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/tiny_custom.css') }}"/>
-    <script src="{{ url_for('static', filename='vendor/tinymce-variable/plugin.min.js') }}"></script>
+    {{ vendor_js('tinymce-variable/plugin.js') }}
   {% endif %}
   {% if confetti %}
-    <script src="{{ url_for('static', filename='vendor/tsparticles-confetti/tsparticles.confetti.bundle.min.js') }}"></script>
+    {{ vendor_js('tsparticles-confetti/tsparticles.confetti.bundle.min.js') }}
   {% endif %}
   {% if mentions %}
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tributejs/tribute.css') }}" />
-    <script src="{{ url_for('static', filename='vendor/tributejs/tribute.min.js') }}"></script>
+    {{ vendor_css('tributejs/tribute.css') }}
+    {{ vendor_js('tributejs/tribute.min.js') }}
   {% endif %}
   {% if files %}
-    <link href="{{ url_for('static', filename='vendor/filepond/filepond.css') }}" rel="stylesheet">
-    <script src="{{ url_for('static', filename='vendor/filepond/filepond.js') }}"></script>
-    <link href="{{ url_for('static', filename='vendor/filepond-plugin-image-preview/filepond-plugin-image-preview.css') }}" rel="stylesheet">
-    <script src="{{ url_for('static', filename='vendor/filepond-plugin-image-preview/filepond-plugin-image-preview.js') }}"></script>
+    {{ vendor_css('filepond/filepond.css') }}
+    {{ vendor_js('filepond/filepond.js') }}
+    {{ vendor_css('filepond-plugin-image-preview/filepond-plugin-image-preview.css') }}
+    {{ vendor_js('filepond-plugin-image-preview/filepond-plugin-image-preview.js') }}
 
   {% endif %}
   {% if sortable %}
-    <script src="{{ url_for('static', filename='vendor/sortablejs/Sortable.min.js') }}"></script>
+    {{ vendor_js('sortablejs/Sortable.min.js') }}
   {% endif %}
   {% if driver %}
-    <script src="{{ url_for('static', filename='vendor/driverjs/driver.js.iife.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/driverjs/driver.css') }}"/>
+    {{ vendor_js('driverjs/driver.js.iife.js') }}
+    {{ vendor_css('driverjs/driver.css') }}
   {% endif %}
   {% if tags %}
     <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/tags.css') }}"/>
   {% endif %}
   {% if markdown %}
-    <script src="{{ url_for('static', filename='vendor/markdown-it/markdown-it.min.js') }}"></script>
+    {{ vendor_js('markdown-it/markdown-it.min.js') }}
   {% endif %}
   {% if report %}
-    <script src="{{ url_for('static', filename='vendor/jspdf/jspdf.umd.min.js') }}"></script>
-    <script src="{{ url_for('static', filename='vendor/jspdf-autotable/jspdf.plugin.autotable.min.js') }}"></script>
+    {{ vendor_js('jspdf/jspdf.umd.min.js') }}
+    {{ vendor_js('jspdf-autotable/jspdf.plugin.autotable.min.js') }}
   {% endif %}
 
 {%- endmacro %}

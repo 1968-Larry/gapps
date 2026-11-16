@@ -1,9 +1,8 @@
 {% extends "layouts/empty.html" %}
 
 {%block head%}
-<script src="{{ url_for('static', filename='vendor/tinymce/tinymce.min.js') }}"
-        xmlns:x-bind="http://www.w3.org/1999/xhtml"></script>
-    <script src="{{ url_for('static', filename='vendor/tinymce-variable/plugin.min.js') }}"></script>
+{{ vendor_js('tinymce/tinymce.min.js') }}
+    {{ vendor_js('tinymce-variable/plugin.js') }}
 <style>
 .tox-tinymce {
     border: 0px !important;

@@ -9,9 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install Python packages
+# Install Python packages. PIP_INDEX_URL / PIP_TRUSTED_HOST point pip at an
+# internal mirror (Nexus, Artifactory, devpi ...) when the build host cannot
+# reach pypi.org; empty = pypi.org.
+ARG PIP_INDEX_URL=
+ARG PIP_TRUSTED_HOST=
 COPY requirements.txt .
-RUN pip install --upgrade pip setuptools wheel && \
+RUN [ -n "$PIP_INDEX_URL" ] || unset PIP_INDEX_URL; \
+    [ -n "$PIP_TRUSTED_HOST" ] || unset PIP_TRUSTED_HOST; \
+    pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt
 
 # Final application image

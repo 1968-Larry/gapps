@@ -12,11 +12,11 @@
     <!-- Stylesheets -->
     <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" type="text/css" />
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
-    <script type="text/javascript" src="{{ url_for('static', filename='vendor/toastify/toastify.min.js') }}"></script>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='vendor/toastify/toastify.min.css') }}">
-    <script defer src="{{ url_for('static', filename='vendor/alpine-focus/cdn.min.js') }}"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
-    <script defer src="{{ url_for('static', filename='vendor/alpinejs/cdn.min.js') }}" defer></script>
+    {{ vendor_js('toastify/toastify.js') }}
+    {{ vendor_css('toastify/toastify.css') }}
+    {{ vendor_js('alpine-focus/cdn.min.js', defer=True) }}
+    {{ vendor_css('tabler-icons/tabler-icons.min.css') }}
+    {{ vendor_js('alpinejs/cdn.min.js', defer=True) }}
 
     {% block head %}
     {% endblock %}

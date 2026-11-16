@@ -41,13 +41,13 @@
     <!-- Stylesheets -->
     <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet" type="text/css" />
 
-    <script defer src="{{ url_for('static', filename='vendor/alpine-focus/cdn.min.js') }}"></script>
+    {{ vendor_js('alpine-focus/cdn.min.js', defer=True) }}
 
-    <script defer src="{{ url_for('static', filename='vendor/alpinejs/cdn.min.js') }}" defer></script>
+    {{ vendor_js('alpinejs/cdn.min.js', defer=True) }}
 
-    <script src="{{ url_for('static', filename='vendor/theme-change/index.js') }}"></script>
-    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='vendor/toastify/toastify.min.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/tabler-icons/tabler-icons.min.css') }}">
+    {{ vendor_js('theme-change/index.js') }}
+    {{ vendor_css('toastify/toastify.css') }}
+    {{ vendor_css('tabler-icons/tabler-icons.min.css') }}
     <script src="{{ url_for('static', filename='js/common.js') }}"></script>
     <style>
       [x-cloak] { display: none !important; }
@@ -601,7 +601,7 @@
         return DOMPurify.sanitize(html,{ALLOWED_TAGS: tags})
       }
     </script>
-    <script type="text/javascript" src="{{ url_for('static', filename='vendor/toastify/toastify.min.js') }}"></script>
+    {{ vendor_js('toastify/toastify.js') }}
     <script>
       document.addEventListener('alpine:initialized', () => {
         console.log("alpine initialized")
