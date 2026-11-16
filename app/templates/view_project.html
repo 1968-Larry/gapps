@@ -6899,6 +6899,9 @@ function project(){
 		  }
 
 		  const gridElement = document.querySelector(selector);
+		  if (!gridElement) {
+			return  // the table is not on the page (for example #risk-table)
+		  }
 		  if (formatter === "policies") {
 			if (this.policyGrid) {
 			  this.policyGrid.destroy();
