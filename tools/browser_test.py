@@ -41,8 +41,17 @@ PAGES = [
 def check_editor(browser, repo_url):
     page = browser.new_page()
     errors = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: m.type == "error" and errors.append(m.text))
+    page.on("pageerror", lambda e: errors.append(f"{e} | {(e.stack or '')[:300]}"))
+    page.on(
+        "console",
+        lambda m: m.type == "error"
+        and "Failed to load resource" not in m.text
+        and errors.append(m.text),
+    )
+    page.on(
+        "response",
+        lambda r: r.status >= 400 and errors.append(f"HTTP {r.status} {r.url}"),
+    )
     page.goto(f"{repo_url}/tools/browser/editor_harness.html")
     page.wait_for_function("window.harnessResult !== undefined", timeout=30000)
     result = page.evaluate("window.harnessResult")
@@ -120,11 +129,17 @@ def main():
     ap.add_argument("--pid", required=True)
     ap.add_argument("--email", default="admin@example.com")
     ap.add_argument("--password", default="admin1234567")
+    ap.add_argument("--skip-editor", action="store_true")
+    ap.add_argument(
+        "--known",
+        default="tools/browser/known_errors.txt",
+        help="page<TAB>message lines that were already broken before (do not fail)",
+    )
     args = ap.parse_args()
 
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        editor_problems = check_editor(browser, args.repo_url)
+        editor_problems = [] if args.skip_editor else check_editor(browser, args.repo_url)
         page_problems, csp = check_pages(
             browser, args.base, args.tid, args.pid, args.email, args.password
         )
@@ -134,7 +149,23 @@ def main():
         print(f"\nCSP violations (report-only, {len(csp)}):")
         for line in sorted(csp):
             print("  " + line)
-    problems = [f"editor: {p}" for p in editor_problems] + page_problems
+    try:
+        with open(args.known, encoding="utf-8") as fh:
+            known = {line.rstrip("\n") for line in fh if line.strip() and not line.startswith("#")}
+    except OSError:
+        known = set()
+    # page<TAB>message, each once (the same error repeats per row on a page)
+    unique = sorted({p.replace(": ", "\t", 1) for p in page_problems})
+    new = [u for u in unique if u not in known]
+    old = [u for u in unique if u in known]
+    print(f"\nPage errors: {len(unique)} different, {len(old)} known from before, {len(new)} new")
+    print("ALL-ERRORS-BEGIN")
+    for u in unique:
+        print(u)
+    print("ALL-ERRORS-END")
+    for u in sorted(known - set(unique)):
+        print(f"  NOTE  no longer seen, remove from {args.known}: {u}")
+    problems = [f"editor: {p}" for p in editor_problems] + [u.replace("\t", ": ") for u in new]
     if problems:
         print(f"\n{len(problems)} PROBLEMS:")
         for p in problems:

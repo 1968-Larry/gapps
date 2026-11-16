@@ -54,6 +54,7 @@ jobs:
         run: docker compose build app
 
       - name: Start gapps and Postgres
+        id: up
         run: |
           docker compose up -d
           for i in $(seq 1 60); do
@@ -97,6 +98,7 @@ jobs:
         run: docker compose exec -T app python3 tools/smoke_test.py --clear-pwd-change
 
       - name: Browser test (editor and main pages in Chromium)
+        if: always() && steps.up.outcome == 'success'
         run: |
           pip install --quiet playwright
           python3 -m playwright install --with-deps chromium > /dev/null

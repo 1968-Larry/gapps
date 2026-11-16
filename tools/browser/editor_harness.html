@@ -9,6 +9,7 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <link rel="icon" href="data:,">
   <title>TinyMCE harness</title>
   <script src="/app/static/vendor/tinymce/tinymce.min.js"></script>
   <script src="/app/static/js/tinymce-compat.js"></script>
@@ -43,24 +44,34 @@
           onAction: (api) => api.hide(),
         });
         editor.on("init", () => {
+          const step = (name, fn) => {
+            try { fn(); } catch (e) { result.errors.push(name + ": " + e + " " + (e.stack || "").split("\n").slice(0, 3).join(" | ")); }
+          };
           result.version = tinymce.majorVersion + "." + tinymce.minorVersion;
-          editor.setContent("<p>Policy for {company} and more</p>");
-          editor.dispatch("keyup");
-          const span = editor.getBody().querySelector("[data-original-variable]");
-          result.variableRendered = !!span;
-          result.variableLabel = span ? span.textContent : null;
-          result.contentRoundTrip = editor.getContent();
-          editor.execCommand("mceInsertTable", false, { rows: 2, columns: 2 });
-          result.table = !!editor.getBody().querySelector("table");
+          step("variables", () => {
+            editor.setContent("<p>Policy for {company} and more</p>");
+            editor.dispatch("keyup");
+            const span = editor.getBody().querySelector("[data-original-variable]");
+            result.variableRendered = !!span;
+            result.variableLabel = span ? span.textContent : null;
+            result.contentRoundTrip = editor.getContent();
+          });
+          step("table", () => {
+            editor.execCommand("mceInsertTable", false, { rows: 2, columns: 2 });
+            result.table = !!editor.getBody().querySelector("table");
+          });
           result.policyMode = editor.mode.get();
 
           const cfg = getEditorConfig("#notes", true);
           cfg.setup = (ro) => {
             ro.on("init", () => {
-              result.readonlyMode = ro.mode.get();
-              tinymce.remove("#notes");
-              result.removed = !tinymce.get("notes");
-              done();
+              // the read-only mode is applied right after init
+              setTimeout(() => {
+                result.readonlyMode = ro.mode.get();
+                tinymce.remove("#notes");
+                result.removed = !tinymce.get("notes");
+                done();
+              }, 200);
             });
           };
           tinymce.init(cfg);

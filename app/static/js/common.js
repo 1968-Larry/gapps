@@ -141,6 +141,8 @@ function getEditorConfig(selector, readOnly=false) {
     }
     if (readOnly) {
         defaultConfig["readonly"] = true
+        // TinyMCE 8 ignores the readonly option in some setups; set the mode too
+        defaultConfig["init_instance_callback"] = (editor) => editor.mode.set("readonly")
         defaultConfig["menubar"] = false
         defaultConfig["toolbar"] = false
     } else {
