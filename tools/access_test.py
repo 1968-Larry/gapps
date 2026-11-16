@@ -13,6 +13,7 @@ Access control test (OWASP A01). Run after tools/seed_demo.py on a TEST database
     python3 tools/access_test.py [--tenant demo]
 """
 import argparse
+import io
 import os
 import re
 import sys
@@ -193,6 +194,42 @@ def main():
     ):
         failures.append("no Content-Security-Policy header")
     print("Headers: checked")
+
+    # 6. API token lifetime and revocation
+    resp = client.get("/api/v1/token?expiration=0")
+    max_days = float(app.config.get("API_TOKEN_MAX_DAYS") or 0)
+    got = (resp.get_json() or {}).get("expires_in")
+    if max_days and got != int(max_days * 86400):
+        failures.append(f"token: expiration=0 gave expires_in={got}, expected the {max_days} day maximum")
+    token = (resp.get_json() or {}).get("token")
+    api = app.test_client()
+    before = api.get("/api/v1/session", headers={"token": token}).status_code
+    client.delete("/api/v1/token")
+    after = api.get("/api/v1/session", headers={"token": token}).status_code
+    if before != 200 or after == 200:
+        failures.append(f"token revocation: before {before}, after revoke {after}")
+    else:
+        print("Tokens: lifetime capped, revocation works")
+
+    # 7. uploads: file type and size (as the admin, who may add evidence)
+    admin = app.test_client()
+    login(admin, os.environ.get("DEFAULT_EMAIL", "admin@example.com"),
+          os.environ.get("DEFAULT_PASSWORD", "admin1234567"))
+    url = f"/api/v1/projects/{ids['projects']}/evidence"
+
+    def upload(name, size=10):
+        data = {"name": f"upload test {name}", "file": (io.BytesIO(b"x" * size), name)}
+        return admin.post(url, data=data, content_type="multipart/form-data").status_code
+
+    if upload("evil.html") != 415:
+        failures.append("upload: .html was not refused with 415")
+    if upload(f"ok-{datetime.utcnow().timestamp():.0f}.txt") != 200:
+        failures.append("upload: .txt was refused")
+    app.config["MAX_CONTENT_LENGTH"] = 1024
+    if upload("big.txt", 4096) != 413:
+        failures.append("upload: a too large file was not refused with 413")
+    app.config["MAX_CONTENT_LENGTH"] = int(float(app.config.get("UPLOAD_MAX_MB") or 50) * 1024 * 1024)
+    print("Uploads: checked")
 
     if failures:
         print(f"\n{len(failures)} ACCESS PROBLEMS:")

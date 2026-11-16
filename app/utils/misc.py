@@ -48,7 +48,7 @@ def _verify_legacy_jws(token, secret_key):
     Tokens made before the itsdangerous 2 upgrade (TimedJSONWebSignatureSerializer:
     header.payload.signature, HMAC-SHA512 with the secret key, "exp" in the header).
     Verified here so API tokens and invites issued earlier keep working until
-    they expire. Returns the data, raises BadSignature / SignatureExpired.
+    they expire. Returns (data, issued at), raises BadSignature / SignatureExpired.
     """
 
     def b64decode(part):
@@ -72,10 +72,15 @@ def _verify_legacy_jws(token, secret_key):
     exp = header.get("exp")
     if not isinstance(exp, (int, float)) or exp < time.time():
         raise SignatureExpired("Token expired")
-    return payload
+    return payload, header.get("iat")
 
 
-def verify_jwt(token):
+def verify_jwt(token, max_age=None, with_timestamp=False):
+    """
+    Data of a signed token, or False. max_age (seconds) limits the age whatever
+    expiry the token was made with. with_timestamp=True returns (data, signed_at
+    as epoch seconds).
+    """
     if not token:
         current_app.logger.warning("Empty token when verifying JWT")
         return False
@@ -87,11 +92,18 @@ def verify_jwt(token):
         except SignatureExpired:
             raise
         except BadSignature:
-            return _verify_legacy_jws(token, secret)
+            data, issued = _verify_legacy_jws(token, secret)
+            if max_age and issued and time.time() - issued > max_age:
+                raise SignatureExpired("Token too old")
+            return (data, issued) if with_timestamp else data
+        age = time.time() - signed_at.timestamp()
         expires_in = payload.get("expires_in")
-        if expires_in and time.time() - signed_at.timestamp() > expires_in:
+        if expires_in and age > expires_in:
             raise SignatureExpired("Token expired")
-        return payload.get("data")
+        if max_age and age > max_age:
+            raise SignatureExpired("Token too old")
+        data = payload.get("data")
+        return (data, signed_at.timestamp()) if with_timestamp else data
     except SignatureExpired:
         current_app.logger.warning("SignatureExpired while verifying JWT")
         return False

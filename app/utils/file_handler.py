@@ -1,4 +1,5 @@
-from flask import current_app
+from flask import current_app, abort
+from werkzeug.datastructures import FileStorage
 import os
 import boto3
 from google.cloud import storage
@@ -7,6 +8,40 @@ import shutil
 import glob
 from datetime import timedelta
 from app.utils.exceptions import FileDoesNotExist
+
+
+def allowed_extensions():
+    value = (current_app.config.get("UPLOAD_ALLOWED_EXTENSIONS") or "*").strip()
+    if value == "*":
+        return None
+    return {e.strip().lower().lstrip(".") for e in value.split(",") if e.strip()}
+
+
+def check_upload_allowed(*names):
+    """Refuse uploads whose file extension is not in UPLOAD_ALLOWED_EXTENSIONS
+    (415). The size is limited by MAX_CONTENT_LENGTH (413) before this runs."""
+    allowed = allowed_extensions()
+    if allowed is None:
+        return
+    for name in names:
+        if not name:
+            continue
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext not in allowed:
+            abort(415, f"File type .{ext or '(none)'} is not allowed. Allowed: {', '.join(sorted(allowed))}")
+
+
+def init_upload_checks(app):
+    """Check the file type of every uploaded file before the view runs, so a
+    refused upload never leaves half-created records behind."""
+    from flask import request
+
+    @app.before_request
+    def _check_uploads():
+        if request.method in ("POST", "PUT", "PATCH") and request.files:
+            for storage in request.files.values():
+                if storage and storage.filename:
+                    check_upload_allowed(storage.filename)
 
 
 class FileStorageHandler:
@@ -108,6 +143,8 @@ class FileStorageHandler:
         Returns:
             Path to the saved file
         """
+        if isinstance(file, FileStorage):
+            check_upload_allowed(file.filename, file_name)
         if self.provider == "local":
             return self.upload_to_local(
                 file, file_name=file_name, folder=folder, abs_path=abs_path

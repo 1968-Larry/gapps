@@ -167,6 +167,19 @@ class Config:
     # Strict-Transport-Security max-age in seconds when HOST_NAME is https (0 = off)
     HSTS_MAX_AGE = int(os.environ.get("HSTS_MAX_AGE", 31536000))
 
+    # API tokens (/api/v1/token): longest lifetime in days, also for tokens asked
+    # for with expiration=0 ("never"). 0 = no limit (not recommended)
+    API_TOKEN_MAX_DAYS = float(os.environ.get("API_TOKEN_MAX_DAYS", 90))
+    # Uploads (evidence files): largest request in MB, and the allowed file
+    # extensions (comma list, "*" = any)
+    UPLOAD_MAX_MB = float(os.environ.get("UPLOAD_MAX_MB", 50))
+    MAX_CONTENT_LENGTH = int(UPLOAD_MAX_MB * 1024 * 1024) if UPLOAD_MAX_MB else None
+    UPLOAD_ALLOWED_EXTENSIONS = os.environ.get(
+        "UPLOAD_ALLOWED_EXTENSIONS",
+        "pdf,doc,docx,xls,xlsx,ppt,pptx,odt,ods,odp,rtf,txt,md,csv,json,xml,yaml,yml,"
+        "log,png,jpg,jpeg,gif,bmp,tif,tiff,webp,zip,7z,gz,tar,msg,eml,vsdx",
+    )
+
     # Brute force protection: lock a local account for LOGIN_LOCK_MINUTES after
     # LOGIN_MAX_FAILED wrong passwords in a row (0 = off)
     LOGIN_MAX_FAILED = int(os.environ.get("LOGIN_MAX_FAILED", 10))

@@ -13,7 +13,7 @@ from flask_login import UserMixin
 from flask import current_app, render_template, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.datastructures import FileStorage
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.event import listens_for
 from app import db, login
 from uuid import uuid4
@@ -5306,6 +5306,8 @@ class User(db.Model, UserMixin):
     # Brute force protection (LOGIN_MAX_FAILED / LOGIN_LOCK_MINUTES)
     failed_login_count = db.Column(db.Integer, default=0)
     locked_until = db.Column(db.DateTime, nullable=True)
+    # API tokens signed before this moment are refused (DELETE /api/v1/token)
+    tokens_valid_after = db.Column(db.DateTime, nullable=True)
     first_name = db.Column(db.String(100), nullable=False, server_default="")
     last_name = db.Column(db.String(100), nullable=False, server_default="")
     super = db.Column(db.Boolean(), nullable=False, server_default="0")
@@ -5527,12 +5529,26 @@ class User(db.Model, UserMixin):
 
     @staticmethod
     def verify_auth_token(token):
-        data = misc.verify_jwt(token)
+        max_days = float(current_app.config.get("API_TOKEN_MAX_DAYS") or 0)
+        result = misc.verify_jwt(
+            token, max_age=max_days * 86400 if max_days else None, with_timestamp=True
+        )
+        if not result:
+            return False
+        data, signed_at = result
         if not isinstance(data, dict) or data.get("purpose") not in (None, "api"):
             return False
         if not data.get("id"):
             return False
-        return User.query.get(data["id"])
+        user = User.query.get(data["id"])
+        # Tokens made before the user's last "revoke all API tokens" are refused
+        if user and user.tokens_valid_after and signed_at is not None:
+            if signed_at <= user.tokens_valid_after.replace(tzinfo=timezone.utc).timestamp():
+                return False
+        return user
+
+    def revoke_api_tokens(self):
+        self.tokens_valid_after = datetime.utcnow()
 
     def generate_auth_token(self, expiration=600):
         data = {"id": self.id, "purpose": "api"}

@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template, jsonify, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
 from config import config
@@ -11,6 +11,7 @@ from app.utils.audit import configure_audit_logger, log_event
 from app.utils.session_timeout import init_session_timeout
 from app.utils.vendor_assets import init_vendor_assets
 from app.utils.security_headers import init_security_headers
+from app.utils.file_handler import init_upload_checks
 
 
 db = SQLAlchemy()
@@ -35,6 +36,7 @@ def create_app(config_name="default"):
     init_session_timeout(app)
     init_vendor_assets(app)
     init_security_headers(app)
+    init_upload_checks(app)
     set_config_options(app)
 
     """
@@ -152,6 +154,17 @@ def configure_errors(app):
             ),
             e.code,
         )
+
+    @app.errorhandler(413)
+    def too_large(e):
+        e.description = (
+            f"The upload is larger than {current_app.config.get('UPLOAD_MAX_MB')} MB"
+        )
+        return handle_error(e, "Too large")
+
+    @app.errorhandler(415)
+    def unsupported_type(e):
+        return handle_error(e, "File type not allowed")
 
     @app.errorhandler(405)
     def invalid_method(e):

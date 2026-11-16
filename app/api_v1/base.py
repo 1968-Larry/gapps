@@ -218,10 +218,41 @@ def change_password(uid):
 @api.route("/token", methods=["GET"])
 @login_required
 def generate_api_token():
-    expiration = int(request.args.get("expiration", 600))
+    try:
+        expiration = int(request.args.get("expiration", 600))
+    except ValueError:
+        abort(422, "expiration must be a number of seconds")
+    # Never longer than API_TOKEN_MAX_DAYS, also when "never" (0) is asked for
+    max_days = float(current_app.config.get("API_TOKEN_MAX_DAYS") or 0)
+    if max_days:
+        max_seconds = int(max_days * 86400)
+        if expiration <= 0 or expiration > max_seconds:
+            expiration = max_seconds
     token = current_user.generate_auth_token(expiration=expiration)
     log_event("api_token_issued", metadata={"expires_in": expiration})
-    return jsonify({"token": token, "expires_in": expiration})
+    return jsonify({"token": token, "expires_in": expiration or None})
+
+
+@api.route("/token", methods=["DELETE"])
+@login_required
+def revoke_api_tokens():
+    """Revoke every API token of the current user."""
+    current_user.revoke_api_tokens()
+    db.session.commit()
+    log_event("api_tokens_revoked", metadata={"target": current_user.email})
+    return jsonify({"message": "All your API tokens are revoked"})
+
+
+@api.route("/users/<string:uid>/tokens", methods=["DELETE"])
+@login_required
+def revoke_api_tokens_of_user(uid):
+    """Revoke every API token of another user (who may manage that user)."""
+    result = Authorizer(current_user).can_user_manage_user(uid)
+    user = result["extra"]["user"]
+    user.revoke_api_tokens()
+    db.session.commit()
+    log_event("api_tokens_revoked", metadata={"target": user.email})
+    return jsonify({"message": f"All API tokens of {user.email} are revoked"})
 
 
 """

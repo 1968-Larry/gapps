@@ -369,6 +369,8 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
 | `SECRET_KEY` | none, required | Signs session cookies and tokens. gapps refuses to start when it is empty or the default |
 | `LOGIN_MAX_FAILED` / `LOGIN_LOCK_MINUTES` | `10` / `15` | Lock a local account after this many wrong passwords in a row, for this many minutes (`0` = off). Logged as `account_locked` |
+| `API_TOKEN_MAX_DAYS` | `90` | Longest lifetime of API tokens, also for `expiration=0`. `DELETE /api/v1/token` revokes all your tokens, `DELETE /api/v1/users/<id>/tokens` those of a user you manage |
+| `UPLOAD_MAX_MB` / `UPLOAD_ALLOWED_EXTENSIONS` | `50` / office, text, image and archive types | Largest upload (413 above it) and allowed file extensions (415 otherwise, `*` = any) |
 | `HSTS_MAX_AGE` | `31536000` | `Strict-Transport-Security` max-age when `HOST_NAME` is https (`0` = off) |
 | `ASSET_MODE` | `local` | `local` = CSS/JS from `app/static/vendor` (no internet needed), `cdn` = from `ASSET_CDN_URL` with SRI hashes |
 | `ASSET_CDN_URL` | `https://cdn.jsdelivr.net/npm` | npm CDN with the jsDelivr layout `<url>/<package>@<version>/<file>` |
@@ -464,8 +466,11 @@ You can generate an API token by viewing the following route in your browsers
 # Create token that expires in 30 seconds
 <gapps-host>/api/v1/token?expiration=30
 
-# Create token that never expires
+# Create a token with the longest allowed lifetime (API_TOKEN_MAX_DAYS, 90 days)
 <gapps-host>/api/v1/token?expiration=0
+
+# Revoke all your API tokens (for example when one has leaked)
+curl -X DELETE <gapps-host>/api/v1/token -H "token: $TOKEN"
 ```
 
 And here is how you use the token to authenticate (curl as an example)
