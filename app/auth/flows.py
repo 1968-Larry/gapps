@@ -4,6 +4,9 @@ from app.models import db, User
 from app.utils import misc
 from app.utils.audit import log_event
 
+INVALID_LOGIN_MSG = "Invalid email or password"
+LOCKED_MSG = "Too many failed login attempts. Try again later."
+
 
 class UserFlow:
     """Handles different user authentication flows: login, register, accept."""
@@ -119,19 +122,41 @@ class UserFlow:
             if current_app.is_self_registration_enabled:
                 flash("Unable to find account. Please create one.", "warning")
                 return redirect(url_for("auth.get_register", provider=self.provider))
-            abort(403, "Unable to find account. Registration is disabled.")
+            # Same answer as a wrong password: do not reveal which accounts exist
+            abort(403, INVALID_LOGIN_MSG)
 
-        if self.provider == "local" and not user.check_password(
-            self.user_dict["password"]
-        ):
-            log_event(
-                "login_failed",
-                email=email,
-                provider=self.provider,
-                result="failure",
-                metadata={"reason": "invalid_password"},
-            )
-            abort(403, "Invalid password")
+        if self.provider == "local":
+            if user.is_login_locked():
+                log_event(
+                    "login_failed",
+                    email=email,
+                    provider=self.provider,
+                    result="failure",
+                    metadata={"reason": "account_locked"},
+                )
+                abort(403, LOCKED_MSG)
+            if not user.check_password(self.user_dict["password"]):
+                locked = user.register_failed_login()
+                db.session.commit()
+                log_event(
+                    "login_failed",
+                    email=email,
+                    provider=self.provider,
+                    result="failure",
+                    metadata={"reason": "invalid_password"},
+                )
+                if locked:
+                    log_event(
+                        "account_locked",
+                        email=email,
+                        result="failure",
+                        metadata={
+                            "minutes": current_app.config.get("LOGIN_LOCK_MINUTES"),
+                        },
+                    )
+                    abort(403, LOCKED_MSG)
+                abort(403, INVALID_LOGIN_MSG)
+            user.reset_failed_logins()
 
         custom_login(user)
         log_event("login_success", email=user.email, provider=self.provider)

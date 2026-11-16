@@ -48,7 +48,7 @@
                         <button @click="updatePolicy" :class="{'btn-disabled': btnDisabled}" class="btn btn-md btn-primary">Save Changes</button>
                     </div>
                 </div>
-                <textarea id="default">{%if policy.content%}{{policy.content|safe}}{%endif%}</textarea>
+                <textarea id="default">{%if policy.content%}{{policy.content}}{%endif%}</textarea>
             </div>
         </div>
     </div>

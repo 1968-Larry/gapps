@@ -47,8 +47,8 @@ class numberAndProgressBar {
     //this.eGui.classList.add('tooltip');
     //this.eGui.setAttribute('data-tip', params.value);
     this.eGui.innerHTML = `
-      <p class='flex-none text-xs font-semibold mr-2'>${params.value}</p>
-      <progress class="progress progress-secondary w-32" value="${params.value}" max="100"></progress>
+      <p class='flex-none text-xs font-semibold mr-2'>${escapeHtml(params.value)}</p>
+      <progress class="progress progress-secondary w-32" value="${escapeHtml(params.value)}" max="100"></progress>
     `;
   }
 
@@ -73,7 +73,7 @@ class idToButton {
   init(params) {
     this.eGui = document.createElement('div');
     this.eGui.classList.add('flex', 'items-center');
-    let link = params.link.replace("{value}", params.value);
+    let link = params.link.replace("{value}", encodeURIComponent(params.value));
     if (!params.text) {
         params.text = "<i class='ti ti-external-link text-lg'></i>"
     }

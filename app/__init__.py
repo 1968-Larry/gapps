@@ -10,6 +10,7 @@ import logging
 from app.utils.audit import configure_audit_logger, log_event
 from app.utils.session_timeout import init_session_timeout
 from app.utils.vendor_assets import init_vendor_assets
+from app.utils.security_headers import init_security_headers
 
 
 db = SQLAlchemy()
@@ -33,6 +34,7 @@ def create_app(config_name="default"):
     configure_audit_logger(app)
     init_session_timeout(app)
     init_vendor_assets(app)
+    init_security_headers(app)
     set_config_options(app)
 
     """

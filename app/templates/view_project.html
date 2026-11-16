@@ -6857,13 +6857,16 @@ function project(){
 		formatComment: function(message) {
 			let words = message.split(' ');
 
+			// The comment is user input: escape every word before it becomes HTML
+			// (x-html), otherwise a comment could run script for everyone who reads it
 			let formatted = words.map(word => {
+				const safe = escapeHtml(word);
 				if (word.startsWith('@')) {
-					return `<i class='italic'>${word}</i>`;
+					return `<i class='italic'>${safe}</i>`;
 				} else if (word.startsWith('#')) {
-					return `<i data-message="${message}" @click="jumpToControl($event)" class="underline hover:cursor-pointer text-success">${word}</i>`;
+					return `<i data-message="${safe}" @click="jumpToControl($event)" class="underline hover:cursor-pointer text-success">${safe}</i>`;
 				} else {
-					return word;
+					return safe;
 				}
 			}).join(' ');
 

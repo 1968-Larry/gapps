@@ -53,6 +53,17 @@ jobs:
       - name: Build image
         run: docker compose build app
 
+      # gapps refuses to start with the default SECRET_KEY
+      - name: Test settings
+        run: |
+          cat > docker-compose.override.yml <<EOF
+          services:
+            app:
+              environment:
+                - SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+                - LOGIN_MAX_FAILED=5
+          EOF
+
       - name: Start gapps and Postgres
         id: up
         run: |
@@ -96,6 +107,10 @@ jobs:
 
       - name: Smoke test (every page and API endpoint)
         run: docker compose exec -T app python3 tools/smoke_test.py --clear-pwd-change
+
+      - name: Access control test (anonymous, other tenant, brute force)
+        if: always() && steps.up.outcome == 'success'
+        run: docker compose exec -T app python3 tools/access_test.py
 
       - name: Browser test (editor and main pages in Chromium)
         if: always() && steps.up.outcome == 'success'

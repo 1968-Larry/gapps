@@ -1,3 +1,5 @@
+import hmac
+import hashlib
 from sqlalchemy import func, distinct, case
 from sqlalchemy.orm import validates
 from app.utils.mixin_models import (
@@ -11,7 +13,7 @@ from flask_login import UserMixin
 from flask import current_app, render_template, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.datastructures import FileStorage
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.event import listens_for
 from app import db, login
 from uuid import uuid4
@@ -5301,6 +5303,9 @@ class User(db.Model, UserMixin):
     password = db.Column(db.String(255), nullable=False, server_default="")
     last_password_change = db.Column(db.DateTime())
     login_count = db.Column(db.Integer, default=0)
+    # Brute force protection (LOGIN_MAX_FAILED / LOGIN_LOCK_MINUTES)
+    failed_login_count = db.Column(db.Integer, default=0)
+    locked_until = db.Column(db.DateTime, nullable=True)
     first_name = db.Column(db.String(100), nullable=False, server_default="")
     last_name = db.Column(db.String(100), nullable=False, server_default="")
     super = db.Column(db.Boolean(), nullable=False, server_default="0")
@@ -5515,29 +5520,80 @@ class User(db.Model, UserMixin):
             return user
         return False
 
+    # Every signed token carries a "purpose", and each verify method accepts only
+    # its own kind: an API token cannot reset a password and a reset link cannot
+    # be used as an API token. Tokens from before this change have no purpose and
+    # are still accepted where they were meant to be used, until they expire.
+
     @staticmethod
     def verify_auth_token(token):
         data = misc.verify_jwt(token)
-        if data is False:
+        if not isinstance(data, dict) or data.get("purpose") not in (None, "api"):
+            return False
+        if not data.get("id"):
             return False
         return User.query.get(data["id"])
 
     def generate_auth_token(self, expiration=600):
-        data = {"id": self.id}
+        data = {"id": self.id, "purpose": "api"}
         return misc.generate_jwt(data, expiration)
+
+    def is_login_locked(self):
+        return bool(self.locked_until and self.locked_until > datetime.utcnow())
+
+    def register_failed_login(self):
+        """Count a wrong password; lock the account at the limit. True = just locked."""
+        limit = int(current_app.config.get("LOGIN_MAX_FAILED") or 0)
+        if not limit:
+            return False
+        self.failed_login_count = (self.failed_login_count or 0) + 1
+        if self.failed_login_count >= limit:
+            minutes = float(current_app.config.get("LOGIN_LOCK_MINUTES") or 15)
+            self.locked_until = datetime.utcnow() + timedelta(minutes=minutes)
+            self.failed_login_count = 0
+            return True
+        return False
+
+    def reset_failed_logins(self):
+        if self.failed_login_count or self.locked_until:
+            self.failed_login_count = 0
+            self.locked_until = None
+            db.session.commit()
+
+    def _password_fingerprint(self):
+        """Changes whenever the password changes: a used reset link stops working."""
+        return hashlib.sha256((self.password or "").encode()).hexdigest()[:16]
+
+    def generate_reset_token(self, expiration=3600):
+        data = {"id": self.id, "purpose": "reset", "pw": self._password_fingerprint()}
+        return misc.generate_jwt(data, expiration)
+
+    @staticmethod
+    def verify_reset_token(token):
+        data = misc.verify_jwt(token)
+        if not isinstance(data, dict) or data.get("purpose") != "reset":
+            return False
+        user = User.query.get(data.get("id")) if data.get("id") else None
+        if not user or not hmac.compare_digest(
+            str(data.get("pw", "")), user._password_fingerprint()
+        ):
+            return False
+        return user
 
     @staticmethod
     def verify_invite_token(token):
         if not token:
             return False
         data = misc.verify_jwt(token)
-        if data is False:
+        if not isinstance(data, dict) or data.get("purpose") not in (None, "invite"):
+            return False
+        if not data.get("email"):
             return False
         return data
 
     @staticmethod
     def generate_invite_token(email, tenant_id=None, expiration=600, attributes={}):
-        data = {**attributes, **{"email": email}}
+        data = {**attributes, **{"email": email, "purpose": "invite"}}
         if tenant_id:
             data["tenant_id"] = tenant_id
         return misc.generate_jwt(data, expiration)
@@ -5545,9 +5601,9 @@ class User(db.Model, UserMixin):
     @staticmethod
     def verify_magic_token(token):
         data = misc.verify_jwt(token)
-        if data is False:
+        if not isinstance(data, dict):
             return False
-        if data.get("type") != "magic_link":
+        if data.get("type") != "magic_link" or data.get("purpose") not in (None, "magic_link"):
             return False
         return data
 
@@ -5557,6 +5613,7 @@ class User(db.Model, UserMixin):
             "user_id": self.id,
             "tenant_id": tenant_id,
             "type": "magic_link",
+            "purpose": "magic_link",
         }
         return misc.generate_jwt(data, expiration)
 

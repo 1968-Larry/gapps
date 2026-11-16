@@ -39,6 +39,8 @@ NEW_COLUMNS = [
     ("risk_register", "due_date", "DATE"),
     ("risk_register", "closed_date", "DATE"),
     ("risk_register", "last_reviewed", "DATE"),
+    ("users", "failed_login_count", "INTEGER DEFAULT 0"),
+    ("users", "locked_until", "TIMESTAMP"),
 ]
 
 app = create_app(os.getenv("FLASK_CONFIG") or "default")

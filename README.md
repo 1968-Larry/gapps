@@ -340,6 +340,9 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `EXCEPTION_APPROVERS` | `very high=ciso,high=ciso,low=riskmanager,very low=riskmanager` | Who approves each level: `project_manager`, `riskmanager` (Security manager) or `ciso`, from low to high. A higher role may approve lower levels; admins only when nobody else holds the role |
 | `EXCEPTION_ALLOW_SELF_APPROVAL` | `false` | Let the requester approve their own exception (only for one-person setups) |
 | `EXCEPTION_REMINDERS_ENABLED` | `true` | Expiry reminders for approved exceptions, sent with the `RISK_REMINDER_*` rules and recipients |
+| `SECRET_KEY` | none, required | Signs session cookies and tokens. gapps refuses to start when it is empty or the default |
+| `LOGIN_MAX_FAILED` / `LOGIN_LOCK_MINUTES` | `10` / `15` | Lock a local account after this many wrong passwords in a row, for this many minutes (`0` = off). Logged as `account_locked` |
+| `HSTS_MAX_AGE` | `31536000` | `Strict-Transport-Security` max-age when `HOST_NAME` is https (`0` = off) |
 | `ASSET_MODE` | `local` | `local` = CSS/JS from `app/static/vendor` (no internet needed), `cdn` = from `ASSET_CDN_URL` with SRI hashes |
 | `ASSET_CDN_URL` | `https://cdn.jsdelivr.net/npm` | npm CDN with the jsDelivr layout `<url>/<package>@<version>/<file>` |
 | `CSP_MODE` | `report-only` | Content-Security-Policy header: `off`, `report-only` (violations only in the browser console) or `enforce` |

@@ -55,7 +55,7 @@ def confirm_email():
 @auth.route("/login/tenants/<string:tid>", methods=["GET", "POST"])
 @is_logged_in
 def login_with_magic_link(tid):
-    next_page = request.args.get("next")
+    next_page = safe_next(request.args.get("next"))
     if current_user.is_authenticated:
         return redirect(next_page or url_for("main.home"))
 
@@ -126,7 +126,7 @@ def login_with_magic_link(tid):
 @auth.route("/magic-login/<string:token>", methods=["GET"])
 @is_logged_in
 def validate_magic_link(token):
-    next_page = request.args.get("next")
+    next_page = safe_next(request.args.get("next"))
     if not (vtoken := User.verify_magic_token(token)):
         log_event(
             "login_failed",
@@ -195,7 +195,7 @@ def post_accept():
     """
     POST endpoint for a user accepting invitations
     """
-    next_page = request.args.get("next")
+    next_page = safe_next(request.args.get("next"))
     attributes = {"token": request.args.get("token")}
     return UserFlow(
         user_info=request.form,
@@ -207,7 +207,7 @@ def post_accept():
 
 @auth.route("/reset-password", methods=["GET", "POST"])
 def reset_password_request():
-    next_page = request.args.get("next")
+    next_page = safe_next(request.args.get("next"))
     internal = request.args.get("internal")
     if current_user.is_authenticated and not internal:
         return redirect(next_page or url_for("main.home"))
@@ -233,7 +233,7 @@ def reset_password_request():
             level="warning",
             user_id=user.id,
         )
-        token = user.generate_auth_token()
+        token = user.generate_reset_token()
         link = f"{current_app.config['HOST_NAME']}reset-password/{token}"
         title = "Password reset"
         content = f"You have requested a password reset. If you did not request a reset, please ignore. Otherwise, click the button below to continue."
@@ -263,7 +263,7 @@ def reset_password_request():
 def reset_password(token):
     if current_user.is_authenticated:
         return redirect(url_for("main.home"))
-    if not (user := User.verify_auth_token(token)):
+    if not (user := User.verify_reset_token(token)):
         log_event(
             "password_reset_failed",
             result="failure",

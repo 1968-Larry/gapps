@@ -12,6 +12,7 @@ Requests authenticated with the API "token" header are not session based and
 are skipped.
 """
 import time
+from urllib.parse import urlsplit
 from datetime import timedelta
 
 from flask import current_app, flash, jsonify, redirect, request, session, url_for
@@ -84,10 +85,19 @@ def expired_response():
 
 
 def safe_next(value):
-    """Only allow local paths as redirect target after login ("/x", not "//host")."""
-    if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
-        return value
-    return None
+    """Only allow local paths as redirect target after login ("/x", not "//host").
+    Browsers drop tabs and newlines in URLs, so "/\t/evil.com" would become
+    "//evil.com": control characters and whitespace are refused as well."""
+    if not value or not value.startswith("/") or "\\" in value:
+        return None
+    if any(ord(c) < 33 or ord(c) == 127 for c in value):
+        return None
+    if value.startswith("//"):
+        return None
+    parts = urlsplit(value)
+    if parts.scheme or parts.netloc:
+        return None
+    return value
 
 
 def init_session_timeout(app):

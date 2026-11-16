@@ -1334,16 +1334,18 @@
                 });
 
                 // Convert tree to HTML
+                // Heading texts come from the policy document: escaped, and passed to
+                // jumpToSection via data-heading instead of inside the expression
                 const generateHTML = (items) => {
                   return items.map(item => `
                     <li>
                         ${item.children.length > 0 ? `
                           <div class="flex flex-row justify-between hover:bg-base-200 hover:cursor-default px-1">
-                            <button class="text-xs hover:cursor-pointer hover:text-primary truncate w-24 text-left font-medium" @click="jumpToSection('${item.text}')">${item.text}</button>
+                            <button class="text-xs hover:cursor-pointer hover:text-primary truncate w-24 text-left font-medium" data-heading="${escapeHtml(item.text)}" @click="jumpToSection($el.dataset.heading)">${escapeHtml(item.text)}</button>
                             <div class="dropdown text-right">
                               <button class="bg-base-100 rounded-md px-2"><i x-show='!readOnly' class="ti ti-dots-vertical"></i></button>
                               <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
-                                <li><a class='text-xs' @click="jumpToSection('${item.text}')">Go to</a></li>
+                                <li><a class='text-xs' data-heading="${escapeHtml(item.text)}" @click="jumpToSection($el.dataset.heading)">Go to</a></li>
                                 <li><a x-show="experimental" class='text-xs'>Reference Controls</a></li>
                               </ul>
                             </div>
@@ -1353,11 +1355,11 @@
                           </ul>
                         ` : `
                           <div class="flex flex-row justify-between hover:bg-base-200 hover:cursor-default px-1">
-                            <button class="text-xs hover:cursor-pointer hover:text-primary truncate w-24 text-left font-medium" @click="jumpToSection('${item.text}')">${item.text}</button>
+                            <button class="text-xs hover:cursor-pointer hover:text-primary truncate w-24 text-left font-medium" data-heading="${escapeHtml(item.text)}" @click="jumpToSection($el.dataset.heading)">${escapeHtml(item.text)}</button>
                             <div class="dropdown text-right">
                               <button class="bg-base-100 rounded-md px-2"><i x-show='!readOnly' class="ti ti-dots-vertical"></i></button>
                               <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-[1] w-52 p-2 shadow">
-                                <li><a class='text-xs' @click="jumpToSection('${item.text}')">Go to</a></li>
+                                <li><a class='text-xs' data-heading="${escapeHtml(item.text)}" @click="jumpToSection($el.dataset.heading)">Go to</a></li>
                                 <li><a x-show="experimental" class='text-xs'>Reference Controls</a></li>
                               </ul>
                             </div>

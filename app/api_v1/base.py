@@ -33,6 +33,7 @@ def get_feature_flags():
 
 
 @api.route("/users/exist", methods=["POST"])
+@login_required  # unauthenticated, this told anyone which email addresses have accounts
 def does_user_exist():
     data = request.get_json()
     if not data.get("email"):

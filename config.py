@@ -164,6 +164,14 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
 
+    # Strict-Transport-Security max-age in seconds when HOST_NAME is https (0 = off)
+    HSTS_MAX_AGE = int(os.environ.get("HSTS_MAX_AGE", 31536000))
+
+    # Brute force protection: lock a local account for LOGIN_LOCK_MINUTES after
+    # LOGIN_MAX_FAILED wrong passwords in a row (0 = off)
+    LOGIN_MAX_FAILED = int(os.environ.get("LOGIN_MAX_FAILED", 10))
+    LOGIN_LOCK_MINUTES = float(os.environ.get("LOGIN_LOCK_MINUTES", 15))
+
     # Browser libraries (app/utils/vendor_assets.py). local = served from
     # app/static/vendor (on-prem / air-gapped), cdn = loaded from ASSET_CDN_URL
     # with SRI hashes. Same versions either way (vendor/package.json).
