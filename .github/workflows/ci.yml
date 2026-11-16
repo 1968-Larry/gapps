@@ -50,6 +50,23 @@ jobs:
       - name: manage.py commands load
         run: docker compose exec -T app python3 manage.py --help
 
+      - name: Login over HTTP (gunicorn, real cookies)
+        run: |
+          docker compose exec -T app python3 -c "
+          from app import create_app, db
+          from app.models import User
+          app = create_app()
+          with app.app_context():
+              u = User.query.filter_by(email='admin@example.com').first()
+              u.require_pwd_change = False
+              db.session.commit()
+          "
+          curl -fsS -c jar -b jar -o /dev/null -w "POST /login -> %{http_code} %{redirect_url}\n" \
+            -d email=admin@example.com -d password=admin1234567 http://localhost:8000/login
+          code=$(curl -sS -b jar -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/session)
+          echo "GET /api/v1/session -> $code"
+          test "$code" = 200
+
       - name: Smoke test (every page and API endpoint)
         run: docker compose exec -T app python3 tools/smoke_test.py --clear-pwd-change
 

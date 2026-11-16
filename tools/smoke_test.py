@@ -127,9 +127,12 @@ def main():
         )
         check = client.get("/api/v1/session")
         if r.status_code >= 400 or check.status_code != 200:
+            jar = getattr(client, "_cookies", {})
             sys.exit(
                 f"Login failed: POST /login -> {r.status_code} {r.headers.get('Location')}, "
-                f"GET /api/v1/session -> {check.status_code}"
+                f"GET /api/v1/session -> {check.status_code} {check.headers.get('Location')}\n"
+                f"  Set-Cookie: {r.headers.getlist('Set-Cookie')}\n"
+                f"  client cookies: {[(k, getattr(c, 'value', c)[:20]) for k, c in dict(jar).items()]}"
             )
 
         static_refs = set()

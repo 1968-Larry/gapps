@@ -30,7 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-installed Python packages from builder
+# Copy pre-installed Python packages from builder. Remove the base image's own
+# pip first, otherwise its old dist-info stays next to the upgraded one.
+RUN rm -rf /usr/local/lib/python3*/site-packages/pip /usr/local/lib/python3*/site-packages/pip-*.dist-info
 COPY --from=builder /usr/local /usr/local/
 
 COPY . .
