@@ -1,3 +1,4 @@
+from urllib.parse import urlencode
 from flask import jsonify, request
 from flask_login import current_user
 from sqlalchemy import func
@@ -200,7 +201,16 @@ def get_gaps_for_tenant(id):
                     "id": psc.id,
                     "project_id": project.id,
                     "project": project.name,
-                    "url": f"/projects/{project.id}",
+                    # opens the project with this sub-control in the control drawer
+                    # (same deep link as the Deadlines page)
+                    "url": f"/projects/{project.id}?"
+                    + urlencode(
+                        {
+                            "tab": "controls",
+                            "control-id": psc.project_control_id,
+                            "subcontrol-id": psc.id,
+                        }
+                    ),
                     "implementation": implementation,
                     "implemented": psc.implemented or 0,
                     "has_evidence": has_evidence,
