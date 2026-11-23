@@ -215,6 +215,36 @@ def change_password(uid):
     return jsonify({"message": "Successfully updated the password"})
 
 
+@api.route("/admin/client-ip", methods=["GET"])
+@login_required
+def debug_client_ip():
+    """For platform admins: what the reverse proxy sends and which address gapps
+    uses as the client (audit log). Open it in the browser."""
+    Authorizer(current_user).can_user_manage_platform()
+    headers = {
+        name: request.headers.get(name)
+        for name in ("X-Forwarded-For", "X-Forwarded-Proto", "X-Real-IP", "Forwarded")
+    }
+    return jsonify(
+        {
+            "client_ip_used": request.remote_addr,
+            "connection_from": request.environ.get("gapps.proxy_peer") or request.remote_addr,
+            "scheme": request.scheme,
+            "headers": headers,
+            "trusted_proxies": current_app.config.get("TRUSTED_PROXIES") or None,
+            "hint": (
+                "No X-Forwarded-For: the proxy does not send it (HAProxy: option forwardfor)."
+                if not headers["X-Forwarded-For"]
+                else (
+                    "Set TRUSTED_PROXIES to the address in connection_from."
+                    if not current_app.config.get("TRUSTED_PROXIES")
+                    else "OK if client_ip_used is your own address."
+                )
+            ),
+        }
+    )
+
+
 @api.route("/token", methods=["GET"])
 @login_required
 def generate_api_token():

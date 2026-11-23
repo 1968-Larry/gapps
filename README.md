@@ -372,6 +372,7 @@ All settings go in `.env` (see `.env.example` for a complete, commented template
 | `API_TOKEN_MAX_DAYS` | `90` | Longest lifetime of API tokens, also for `expiration=0`. `DELETE /api/v1/token` revokes all your tokens, `DELETE /api/v1/users/<id>/tokens` those of a user you manage |
 | `UPLOAD_MAX_MB` / `UPLOAD_ALLOWED_EXTENSIONS` | `50` / office, text, image and archive types | Largest upload (413 above it) and allowed file extensions (415 otherwise, `*` = any) |
 | `HSTS_MAX_AGE` | `31536000` | `Strict-Transport-Security` max-age when `HOST_NAME` is https (`0` = off) |
+| `TRUSTED_PROXIES` | empty | Reverse proxies (IPs/networks). Their `X-Forwarded-For` is read from the right to find the client (audit log, `request.remote_addr`), `X-Forwarded-Proto` sets the scheme. Check with `/api/v1/admin/client-ip` (platform admins). HAProxy needs `option forwardfor` and `http-request set-header X-Forwarded-Proto https` |
 | `ASSET_MODE` | `local` | `local` = CSS/JS from `app/static/vendor` (no internet needed), `cdn` = from `ASSET_CDN_URL` with SRI hashes |
 | `ASSET_CDN_URL` | `https://cdn.jsdelivr.net/npm` | npm CDN with the jsDelivr layout `<url>/<package>@<version>/<file>` |
 | `CSP_MODE` | `report-only` | Content-Security-Policy header: `off`, `report-only` (violations only in the browser console) or `enforce` |

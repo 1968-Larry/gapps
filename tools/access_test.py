@@ -231,6 +231,24 @@ def main():
     app.config["MAX_CONTENT_LENGTH"] = int(float(app.config.get("UPLOAD_MAX_MB") or 50) * 1024 * 1024)
     print("Uploads: checked")
 
+    # 8. client IP behind a trusted proxy (TRUSTED_PROXIES)
+    app.config["TRUSTED_PROXIES"] = "172.16.0.0/12"
+    cases = [
+        ("172.18.0.1", "1.2.3.4, 203.0.113.7", "203.0.113.7"),  # spoofed left part ignored
+        ("198.51.100.9", "1.2.3.4", "198.51.100.9"),            # not a proxy: header ignored
+    ]
+    for peer, xff, want in cases:
+        resp = admin.get(
+            "/api/v1/admin/client-ip",
+            headers={"X-Forwarded-For": xff},
+            environ_base={"REMOTE_ADDR": peer},
+        )
+        got = (resp.get_json() or {}).get("client_ip_used")
+        if got != want:
+            failures.append(f"client ip: from {peer} with X-Forwarded-For '{xff}' got {got}, expected {want}")
+    app.config["TRUSTED_PROXIES"] = ""
+    print("Client IP: checked")
+
     if failures:
         print(f"\n{len(failures)} ACCESS PROBLEMS:")
         for f in failures:

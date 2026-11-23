@@ -194,6 +194,10 @@ class Config:
     # the browser console) or enforce
     CSP_MODE = os.environ.get("CSP_MODE", "report-only").lower()
 
+    # Reverse proxies in front of gapps (IPs or networks, comma list). Their
+    # X-Forwarded-For / X-Forwarded-Proto are used, read from the right
+    # (app/utils/client_ip.py). Empty = AUDIT_TRUST_FORWARDED_FOR below applies.
+    TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "")
     AUDIT_TRUST_FORWARDED_FOR = (
         os.environ.get("AUDIT_TRUST_FORWARDED_FOR", "true").lower() == "true"
     )

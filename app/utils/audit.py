@@ -225,6 +225,12 @@ def current_actor(default=None):
 
 def _client():
     """(ip, peer) - peer only when it differs from ip (i.e. behind a proxy)."""
+    # TRUSTED_PROXIES set: app/utils/client_ip.py already put the client in
+    # remote_addr and kept the proxy's address
+    proxy_peer = request.environ.get("gapps.proxy_peer")
+    if proxy_peer:
+        ip = request.remote_addr
+        return ip, (proxy_peer if proxy_peer != ip else None)
     peer = request.remote_addr
     if _state["trust_xff"]:
         xff = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
