@@ -337,8 +337,13 @@ def add_tenant():
             approved_domains=data.get("approved_domains"),
             init_data=True,
         )
-    except Exception as e:
+    except ValueError as e:
         return jsonify({"message": str(e)}), 400
+    except Exception:
+        # Do not send internal error text (SQL, paths) to the browser
+        current_app.logger.exception("Creating a tenant failed")
+        db.session.rollback()
+        return jsonify({"message": "The tenant could not be created"}), 400
     return jsonify(tenant.as_dict())
 
 

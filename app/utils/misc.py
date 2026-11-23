@@ -10,6 +10,7 @@ import re
 import time
 
 TOKEN_SALT = "gapps-token"
+EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+-]{1,64}@[a-zA-Z0-9.-]{1,253}\.[a-zA-Z]{2,24}")
 
 
 class Response:
@@ -236,7 +237,13 @@ def get_users_from_text(text, resolve_users=False, tenant=None):
     will return a list of found emails (or resolved user objects)
     """
     data = []
-    emails = re.findall(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+    # Word by word with bounded lengths: a regex over the whole comment could be
+    # made very slow with crafted input (ReDoS)
+    emails = []
+    for word in (text or "")[:20000].split():
+        word = word.strip(".,;:!?()[]{}<>\"'").lstrip("@")
+        if EMAIL_RE.fullmatch(word):
+            emails.append(word)
     if not resolve_users:
         return emails
     for email in emails:
