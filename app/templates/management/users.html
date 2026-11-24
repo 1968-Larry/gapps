@@ -30,6 +30,8 @@
                 <div class="flex justify-between align-items-center">
                     <h2 class="card-title mb-4">Users</h2>
                     <div class="space-x-2 flex">
+                        <a href="/api/v1/admin/access-report" class="btn btn-sm btn-ghost border border-base-300 tooltip"
+                           data-tip="Every user's tenants, roles and projects (CSV for access reviews)"><i class="ti ti-shield-check"></i> Access report</a>
                         <button class="btn btn-sm btn-ghost border border-base-300 capitalize tooltip"
                                 @click="exportCSV" data-tip="CSV Export"><i class="ti ti-download"></i></button>
                         <button class="btn btn-sm btn-ghost border border-base-300 capitalize tooltip"
@@ -112,7 +114,55 @@
                     </button>
                 </form>
                 <h3 class="font-bold text-lg" x-text="'Update: '+selectedItem.email"></h3>
-                <div class="card card-body">
+                <div role="tablist" class="tabs tabs-bordered mt-2">
+                    <a role="tab" class="tab" :class="{'tab-active': modalTab === 'details'}" @click="modalTab = 'details'">Details</a>
+                    <a role="tab" class="tab" :class="{'tab-active': modalTab === 'access'}" @click="showAccessTab">Access</a>
+                </div>
+                <div x-show="modalTab === 'access'" class="py-4">
+                    <div x-show="accessLoading" class="text-center"><span class="loading loading-dots loading-md"></span></div>
+                    <template x-if="access && !accessLoading">
+                        <div class="space-y-4">
+                            <div class="flex flex-wrap gap-2 text-sm">
+                                <span class="badge" :class="access.user.is_active ? 'badge-success' : 'badge-error'" x-text="access.user.is_active ? 'Active' : 'Inactive'"></span>
+                                <span x-show="access.user.super" class="badge badge-warning">Instance admin</span>
+                                <span x-show="access.user.locked" class="badge badge-error">Login locked</span>
+                                <span class="badge badge-ghost" x-text="access.user.login_count + ' logins'"></span>
+                                <span x-show="access.user.tokens_revoked_at" class="badge badge-ghost" x-text="'API tokens revoked ' + (access.user.tokens_revoked_at || '').slice(0, 10)"></span>
+                            </div>
+                            <div x-show="access.instance" role="alert" class="alert alert-warning text-sm">
+                                <span x-text="'Instance level: ' + access.instance"></span>
+                            </div>
+                            <div x-show="!access.tenants.length" class="text-sm opacity-70">Not a member of any tenant or project.</div>
+                            <template x-for="t in access.tenants" :key="t.id">
+                                <div class="card bg-base-100 border border-base-300">
+                                    <div class="card-body p-4 space-y-2">
+                                        <div class="flex flex-wrap items-center gap-2">
+                                            <h4 class="font-semibold" x-text="t.name"></h4>
+                                            <span x-show="t.owner" class="badge badge-sm badge-primary">Owner</span>
+                                            <span x-show="!t.member && !t.owner" class="badge badge-sm badge-ghost">Project access only</span>
+                                            <template x-for="r in t.roles" :key="r.name">
+                                                <span class="badge badge-sm badge-outline" x-text="r.label"></span>
+                                            </template>
+                                        </div>
+                                        <template x-for="text in t.implicit" :key="text">
+                                            <div class="text-sm opacity-70"><i class="ti ti-arrow-right"></i> <span x-text="'Also reaches ' + text"></span></div>
+                                        </template>
+                                        <table x-show="t.projects.length" class="table table-xs">
+                                            <thead><tr><th>Project</th><th>Access</th></tr></thead>
+                                            <tbody>
+                                                <template x-for="p in t.projects" :key="p.id">
+                                                    <tr><td><a class="link" :href="'/projects/' + p.id" x-text="p.name"></a></td><td class="capitalize" x-text="p.access_level"></td></tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                        <div x-show="!t.projects.length" class="text-sm opacity-70">No project memberships.</div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+                <div class="card card-body" x-show="modalTab === 'details'">
                     <div class="grid grid-cols-6 gap-6">
                         <div class="col-span-3">
                             <label class="block text-sm font-medium pb-2">First Name</label>
@@ -223,12 +273,37 @@ function table(){
           {"field": "last_name", "headerName": "Last", "filter": "agTextColumnFilter"},
           {"field": "super", "headerName": "Super user", "filter": "agTextColumnFilter",  "cellRenderer":booleanBadge},
           {"field": "is_active", "headerName": "Active", "filter": "agTextColumnFilter",  "cellRenderer":booleanBadge},
+          {"field": "access_tenants", "headerName": "Tenants", "filter": "agNumberColumnFilter", "width": 110},
+          {"field": "access_roles", "headerName": "Tenant roles", "filter": "agTextColumnFilter"},
+          {"field": "access_projects", "headerName": "Projects", "filter": "agNumberColumnFilter", "width": 110},
           {"field": "email_confirmed_at", "headerName": "Confirmed", "filter": "agTextColumnFilter",  "cellRenderer":hasValue},
           {"field": "license", "headerName": "License", "filter": "agTextColumnFilter", "cellClass": "capitalize"},
           {"field": "date_added", "headerName": "Created", "filter": "agTextColumnFilter"}
         ],
+        modalTab: "details",
+        access: null,
+        accessLoading: false,
+        showAccessTab() {
+          this.modalTab = "access";
+          if (this.access && this.access.user.id === this.selectedItem.id) return;
+          this.access = null;
+          this.accessLoading = true;
+          request("GET",
+            `/api/v1/users/${this.selectedItem.id}/access`,
+            data => {
+              this.access = data;
+              this.accessLoading = false;
+            },
+            error => {
+              this.accessLoading = false;
+              toast(error.message, "error");
+            }
+          );
+        },
         openModal(item) {
           this.selectedItem = item;
+          this.modalTab = "details";
+          this.access = null;
           this.showModal = true;
           let selected = [];
           let unselected = [];

@@ -249,6 +249,23 @@ def main():
     app.config["TRUSTED_PROXIES"] = ""
     print("Client IP: checked")
 
+    # 9. access overview (Instance users > Access) and the access report
+    with app.app_context():
+        outsider_id = User.query.filter_by(email=OUTSIDER).first().id
+    data = admin.get(f"/api/v1/users/{outsider_id}/access").get_json() or {}
+    tenants = {t["name"]: t for t in data.get("tenants", [])}
+    if not tenants.get("outsider", {}).get("owner"):
+        failures.append(f"access overview: outsider should own tenant 'outsider', got {list(tenants)}")
+    if args.tenant in tenants:
+        failures.append("access overview: outsider wrongly shown in the demo tenant")
+    if client.get(f"/api/v1/users/{outsider_id}/access").status_code not in (401, 403, 404):
+        failures.append("access overview: a normal user could read it")
+    report = admin.get("/api/v1/admin/access-report")
+    text = report.get_data(as_text=True)
+    if report.status_code != 200 or OUTSIDER not in text or ";" not in text.splitlines()[0]:
+        failures.append(f"access report: HTTP {report.status_code}, outsider row or header missing")
+    print("Access overview: checked")
+
     if failures:
         print(f"\n{len(failures)} ACCESS PROBLEMS:")
         for f in failures:

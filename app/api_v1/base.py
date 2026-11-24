@@ -15,6 +15,10 @@ from app.utils.authorizer import Authorizer
 from app.utils import misc
 from app.utils.audit import log_event
 import arrow
+import csv
+import io
+from flask import Response
+from app.utils.access_overview import access_report_rows, access_summary, user_access
 
 
 """
@@ -106,8 +110,47 @@ def get_users():
     Authorizer(current_user).can_user_manage_platform()
     data = []
     for user in models.User.query.all():
-        data.append(user.as_dict())
+        row = user.as_dict()
+        row.update(access_summary(user_access(user)))
+        data.append(row)
     return jsonify(data)
+
+
+@api.route("/users/<string:uid>/access", methods=["GET"])
+@login_required
+def get_user_access(uid):
+    """Everything a user can reach: tenants, roles, projects, implicit access.
+    Platform admins only (it shows every tenant the user is in)."""
+    Authorizer(current_user).can_user_manage_platform()
+    user = models.User.query.get(uid)
+    if not user:
+        abort(404, "User not found")
+    return jsonify(user_access(user))
+
+
+@api.route("/admin/access-report", methods=["GET"])
+@login_required
+def get_access_report():
+    """CSV: one row per user, tenant and project, for access reviews."""
+    Authorizer(current_user).can_user_manage_platform()
+    out = io.StringIO()
+    # semicolon: Excel with a Swedish (or other comma-decimal) locale splits on it
+    writer = csv.writer(out, delimiter=";")
+    users = models.User.query.order_by(models.User.email).all()
+    rows = access_report_rows(users)
+    for row in rows:
+        # cells starting with = + - @ are formulas in Excel: neutralise them
+        writer.writerow([
+            ("'" + c) if isinstance(c, str) and c[:1] in ("=", "+", "-", "@") else c
+            for c in row
+        ])
+    log_event("access_report_exported", metadata={"users": len(users)})
+    stamp = arrow.utcnow().format("YYYY-MM-DD")
+    return Response(
+        "\ufeff" + out.getvalue(),  # BOM: Excel opens it as UTF-8
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=gapps-access-{stamp}.csv"},
+    )
 
 
 @api.route("/admin/users", methods=["POST"])
